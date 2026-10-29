@@ -14,6 +14,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="js/reports.js" defer></script>
+  <script src="js/mobile-menu.js"></script>
 </head>
 <body>
 <div class="app">
@@ -53,6 +54,40 @@
 
   <div class="main-area">
     <header class="topbar">
+
+        <button
+  id="mobileMenuToggle"
+  class="mobile-menu-toggle"
+  type="button"
+  aria-label="Open navigation menu"
+  aria-expanded="false"
+  aria-controls="mobileNavigation"
+>
+  <i data-lucide="menu"></i>
+  <span>Menu</span>
+</button>
+
+<nav id="mobileNavigation" class="mobile-navigation" hidden>
+  <a href="index.html">
+    <i data-lucide="layout-dashboard"></i> Dashboard
+  </a>
+  <a href="sales.html">
+    <i data-lucide="shopping-bag"></i> Sales
+  </a>
+  <a href="inventory.html">
+    <i data-lucide="package"></i> Inventory
+  </a>
+  <a href="customers.html">
+    <i data-lucide="users"></i> Customers
+  </a>
+  <a href="expenses.html">
+    <i data-lucide="wallet"></i> Expenses
+  </a>
+  <a href="reports.html">
+    <i data-lucide="file-chart-column"></i> Reports
+  </a>
+</nav>
+
       <div>
         <p class="eyebrow">Business Intelligence</p>
         <h1>Reports & Analytics</h1>

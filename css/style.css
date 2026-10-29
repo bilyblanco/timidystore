@@ -788,3 +788,95 @@ th {
 }
 
 
+/* Mobile dropdown navigation */
+
+.mobile-menu-toggle,
+.mobile-navigation {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Hide the desktop sidebar */
+  .sidebar {
+    display: none !important;
+  }
+
+  /* Give the main content the full width */
+  .main-area {
+    margin-left: 0 !important;
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Prevent old mobile navigation styling
+     from affecting our new dropdown */
+  .nav {
+    flex-direction: column;
+  }
+
+  .topbar {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .mobile-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .mobile-menu-toggle svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .mobile-navigation:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    z-index: 1000;
+    top: calc(100% - 2px);
+    left: 12px;
+    width: min(260px, calc(100vw - 24px));
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+  }
+
+  .mobile-navigation a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 14px;
+  }
+
+  .mobile-navigation a:hover,
+  .mobile-navigation a:focus-visible {
+    background: var(--bg);
+  }
+
+  .mobile-navigation svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+}
+
+
