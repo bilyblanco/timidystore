@@ -305,3 +305,41 @@ refreshDashboard();
 if (typeof lucide !== "undefined") {
   lucide.createIcons();
 }
+
+
+function animateDashboardGreeting() {
+  const greeting = document.getElementById("greetingText");
+
+  if (!greeting) return;
+
+  const fullText = greeting.dataset.text || "Welcome back, Allan!";
+
+  // Accessibility: show the complete text without animation.
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    greeting.textContent = fullText;
+    greeting.classList.add("typing-complete");
+    return;
+  }
+
+  let index = 0;
+
+  greeting.textContent = "";
+
+  function typeNextCharacter() {
+    if (index < fullText.length) {
+      greeting.textContent += fullText.charAt(index);
+      index++;
+      setTimeout(typeNextCharacter, 75);
+    } else {
+      greeting.classList.add("typing-complete");
+    }
+  }
+
+  typeNextCharacter();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", animateDashboardGreeting);
+} else {
+  animateDashboardGreeting();
+}
