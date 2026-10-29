@@ -956,14 +956,17 @@ th {
 
 .developer-footer {
   width: 100%;
-  padding: 28px 16px 20px;
-  margin-top: 32px;
+  margin: 8px 0 0;
+  padding: 10px 16px;
+  box-sizing: border-box;
   text-align: center;
 }
 
 .developer-footer p {
   margin: 0;
-  font-size: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
   color: var(--text-muted, #8892a6);
 }
 
@@ -971,7 +974,6 @@ th {
   color: var(--primary, #6366f1);
   font-weight: 600;
   text-decoration: none;
-  transition: color 0.2s ease;
 }
 
 .developer-footer a:hover {
