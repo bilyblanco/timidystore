@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Timidy Store | Dashboard</title>
+
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- Icons -->
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+
+  <!-- Charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+  <script src="js/app.js" defer></script>
+</head>
+<body>
+  <div class="app">
+
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-icon">
+          <i data-lucide="monitor-smartphone"></i>
+        </span>
+        <span>Timidy Store</span>
+      </div>
+
+      <p class="nav-heading">MAIN MENU</p>
+
+      <nav class="nav">
+        <a href="#" class="nav-link active">
+          <i data-lucide="layout-dashboard"></i> Dashboard
+        </a>
+        <a href="sales.html" class="nav-link">
+        <i data-lucide="shopping-bag"></i> Sales
+        </a>
+        <a href="inventory.html" class="nav-link">
+        <i data-lucide="package"></i> Inventory
+        </a>
+        <a href="customers.html" class="nav-link">
+        <i data-lucide="users"></i> Customers
+        </a>
+        <a href="expenses.html" class="nav-link">
+        <i data-lucide="wallet"></i> Expenses
+        </a>
+        <a href="reports.html" class="nav-link">
+  <i data-lucide="file-chart-column"></i> Reports
+</a>
+        <a href="#" class="nav-link">
+          <i data-lucide="settings"></i> Settings
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="avatar">T</div>
+        <div>
+          <strong>Timidy</strong>
+          <small>Administrator</small>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-area">
+
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Welcome back, Timidy 👋</p>
+          <h1>Dashboard Overview</h1>
+        </div>
+
+        <div class="header-actions">
+          <span class="demo-label">DEMO DATA</span>
+          <button id="themeToggle" class="theme-toggle"
+                  aria-label="Toggle dark mode">
+            🌙
+          </button>
+        </div>
+      </header>
+
+      <main class="content">
+
+        
+        <section class="stats-grid">
+
+        <article class="stat-card">
+            <div class="stat-card-header">
+            <p>Total Revenue</p>
+            <i data-lucide="banknote"></i>
+            </div>
+            <h2 id="dashboardRevenue">TZS 0</h2>
+            <span class="stat-description">
+            Revenue from all recorded sales
+            </span>
+        </article>
+
+        <article class="stat-card">
+            <div class="stat-card-header">
+            <p>Gross Profit</p>
+            <i data-lucide="trending-up"></i>
+            </div>
+            <h2 id="dashboardGrossProfit">TZS 0</h2>
+            <span class="stat-description">
+            Revenue minus product costs
+            </span>
+        </article>
+
+        <article class="stat-card">
+            <div class="stat-card-header">
+            <p>Net Profit</p>
+            <i data-lucide="wallet"></i>
+            </div>
+            <h2 id="dashboardNetProfit">TZS 0</h2>
+            <span class="stat-description">
+            After all recorded expenses
+            </span>
+        </article>
+
+        <article class="stat-card">
+            <div class="stat-card-header">
+            <p>Operating Expenses</p>
+            <i data-lucide="receipt"></i>
+            </div>
+            <h2 id="dashboardExpenses">TZS 0</h2>
+            <span class="stat-description">
+            General business operating costs
+            </span>
+        </article>
+
+        </section>
+
+
+        <section class="dashboard-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Sales Performance</h2>
+              <p>Revenue and net profit over time</p>
+            </div>
+
+            <select id="chartPeriod" class="period-select">
+              <option value="6">Last 6 months</option>
+              <option value="12">Last 12 months</option>
+            </select>
+          </div>
+
+          <div class="chart-container">
+            <canvas id="salesChart"></canvas>
+          </div>
+        </section>
+
+            
+        <section class="dashboard-panel">
+        <div class="panel-header">
+            <div>
+            <h2>Recent Transactions</h2>
+            <p>Latest recorded sales</p>
+            </div>
+            <a href="sales.html" class="view-all-link">
+            View All
+            </a>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+            <thead>
+                <tr>
+                <th>Date</th>
+                <th>Product</th>
+                <th>Sale Type</th>
+                <th>Amount</th>
+                <th>Profit</th>
+                </tr>
+            </thead>
+            <tbody id="recentTransactions"></tbody>
+            </table>
+        </div>
+        </section>
+
+        <section class="dashboard-panel">
+        <div class="panel-header">
+            <div>
+            <h2>Inventory Alerts</h2>
+            <p>Products that need attention</p>
+            </div>
+            <a href="inventory.html" class="view-all-link">
+            View Inventory
+            </a>
+        </div>
+
+        <div id="dashboardStockAlerts"
+            class="dashboard-alerts"></div>
+        </section>
+
+
+      </main>
+    </div>
+  </div>
+</body>
+</html>
+

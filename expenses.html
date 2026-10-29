@@ -1,0 +1,219 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+  <title>Expenses | Timidy Store</title>
+
+  <link rel="stylesheet" href="css/style.css">
+
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="js/expenses.js" defer></script>
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-icon">
+        <i data-lucide="monitor-smartphone"></i>
+      </span>
+      <span>Timidy Store</span>
+    </div>
+
+    <p class="nav-heading">MAIN MENU</p>
+
+    <nav class="nav">
+      <a href="index.html" class="nav-link">
+        <i data-lucide="layout-dashboard"></i> Dashboard
+      </a>
+      <a href="sales.html" class="nav-link">
+        <i data-lucide="shopping-bag"></i> Sales
+      </a>
+      <a href="inventory.html" class="nav-link">
+        <i data-lucide="package"></i> Inventory
+      </a>
+      <a href="customers.html" class="nav-link">
+        <i data-lucide="users"></i> Customers
+      </a>
+      <a href="expenses.html" class="nav-link active">
+        <i data-lucide="wallet"></i> Expenses
+      </a>
+      <a href="reports.html" class="nav-link">
+  <i data-lucide="file-chart-column"></i> Reports
+</a>
+      <a href="#" class="nav-link">
+        <i data-lucide="settings"></i> Settings
+      </a>
+    </nav>
+  </aside>
+
+  <div class="main-area">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Business Spending</p>
+        <h1>Expenses Management</h1>
+      </div>
+
+      <button id="themeToggle"
+              class="theme-toggle"
+              aria-label="Toggle theme">🌙</button>
+    </header>
+
+    <main class="content">
+
+      <section class="stats-grid">
+        <article class="stat-card">
+          <p>Total Expenses</p>
+          <h2 id="totalExpenses">TZS 0</h2>
+        </article>
+
+        <article class="stat-card">
+          <p>This Month</p>
+          <h2 id="monthlyExpenses">TZS 0</h2>
+        </article>
+
+        <article class="stat-card">
+          <p>Expense Records</p>
+          <h2 id="expenseCount">0</h2>
+        </article>
+
+        <article class="stat-card">
+          <p>Largest Expense</p>
+          <h2 id="largestExpense">TZS 0</h2>
+        </article>
+      </section>
+
+      <section class="dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <h2 id="expenseFormTitle">Record New Expense</h2>
+            <p>Track operating costs separately from sales</p>
+          </div>
+        </div>
+
+        <form id="expenseForm" class="product-form">
+
+          <div class="form-group">
+            <label for="expenseTitle">Expense Description</label>
+            <input id="expenseTitle" required
+                   placeholder="e.g. Internet bundle">
+          </div>
+
+          <div class="form-group">
+            <label for="expenseCategory">Category</label>
+            <select id="expenseCategory" required>
+              <option value="Transport">Transport</option>
+              <option value="Internet">Internet</option>
+              <option value="Marketing">Marketing</option>
+              <option value="Repairs">Repairs</option>
+              <option value="Packaging">Packaging</option>
+              <option value="Communication">Communication</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="expenseAmount">Amount (TZS)</label>
+            <input id="expenseAmount" type="number"
+                   min="1" step="1" required>
+          </div>
+
+          <div class="form-group">
+            <label for="expenseDate">Expense Date</label>
+            <input id="expenseDate" type="date" required>
+          </div>
+
+          <div class="form-group">
+            <label for="expenseNotes">Notes (Optional)</label>
+            <input id="expenseNotes"
+                   placeholder="Additional details">
+          </div>
+
+          <button type="submit" class="primary-btn">
+            <i data-lucide="check-circle"></i>
+            <span id="saveExpenseLabel">Save Expense</span>
+          </button>
+
+          <button type="button" id="cancelExpenseEdit"
+                  class="secondary-btn hidden">
+            Cancel Editing
+          </button>
+        </form>
+
+        <p id="expenseMessage" class="sale-message"
+           role="status"></p>
+      </section>
+
+      <section class="dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Expense Records</h2>
+            <p>Search and filter business spending</p>
+          </div>
+        </div>
+
+        <div class="expense-filters">
+          <input id="searchExpense"
+                 class="search-input"
+                 placeholder="Search expenses...">
+
+          <input id="filterExpenseMonth"
+                 type="month"
+                 class="period-select">
+
+          <select id="filterExpenseCategory"
+                  class="period-select">
+            <option value="">All Categories</option>
+            <option value="Transport">Transport</option>
+            <option value="Internet">Internet</option>
+            <option value="Marketing">Marketing</option>
+            <option value="Repairs">Repairs</option>
+            <option value="Packaging">Packaging</option>
+            <option value="Communication">Communication</option>
+            <option value="Other">Other</option>
+          </select>
+
+          <button id="clearExpenseFilters"
+                  type="button"
+                  class="secondary-btn">
+            Clear Filters
+          </button>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Category</th>
+                <th>Amount</th>
+                <th>Notes</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="expensesTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Expenses by Category</h2>
+            <p>Breakdown of recorded operating costs</p>
+          </div>
+        </div>
+        <div id="expenseBreakdown"
+             class="expense-breakdown"></div>
+      </section>
+
+    </main>
+  </div>
+</div>
+</body>
+</html>

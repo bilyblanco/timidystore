@@ -1,0 +1,192 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+  <title>Reports | Timidy Store</title>
+
+  <link rel="stylesheet" href="css/style.css">
+
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="js/reports.js" defer></script>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-icon">
+        <i data-lucide="monitor-smartphone"></i>
+      </span>
+      <span>Timidy Store</span>
+    </div>
+
+    <p class="nav-heading">MAIN MENU</p>
+    <nav class="nav">
+      <a href="index.html" class="nav-link">
+        <i data-lucide="layout-dashboard"></i> Dashboard
+      </a>
+      <a href="sales.html" class="nav-link">
+        <i data-lucide="shopping-bag"></i> Sales
+      </a>
+      <a href="inventory.html" class="nav-link">
+        <i data-lucide="package"></i> Inventory
+      </a>
+      <a href="customers.html" class="nav-link">
+        <i data-lucide="users"></i> Customers
+      </a>
+      <a href="expenses.html" class="nav-link">
+        <i data-lucide="wallet"></i> Expenses
+      </a>
+      <a href="reports.html" class="nav-link active">
+        <i data-lucide="file-chart-column"></i> Reports
+      </a>
+      <a href="#" class="nav-link">
+        <i data-lucide="settings"></i> Settings
+      </a>
+    </nav>
+  </aside>
+
+  <div class="main-area">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Business Intelligence</p>
+        <h1>Reports & Analytics</h1>
+      </div>
+      <button id="themeToggle" class="theme-toggle"
+              aria-label="Toggle theme">🌙</button>
+    </header>
+
+    <main class="content">
+      <section class="dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Quarterly Financial Report</h2>
+            <p>Select a reporting period</p>
+          </div>
+        </div>
+
+        <div class="report-controls">
+          <div class="form-group">
+            <label for="reportYear">Year</label>
+            <select id="reportYear"></select>
+          </div>
+
+          <div class="form-group">
+            <label for="reportQuarter">Quarter</label>
+            <select id="reportQuarter">
+              <option value="1">Q1 — Jan to Mar</option>
+              <option value="2">Q2 — Apr to Jun</option>
+              <option value="3">Q3 — Jul to Sep</option>
+              <option value="4">Q4 — Oct to Dec</option>
+            </select>
+          </div>
+
+          <button id="downloadPDF" class="primary-btn"
+                  type="button">
+            <i data-lucide="file-text"></i> Download PDF
+          </button>
+
+          <button id="downloadExcel" class="primary-btn"
+                  type="button">
+            <i data-lucide="sheet"></i> Download Excel
+          </button>
+        </div>
+
+        <p id="reportMessage" class="sale-message"
+           role="status"></p>
+      </section>
+
+      <section class="stats-grid">
+        <article class="stat-card">
+          <p>Revenue</p>
+          <h2 id="reportRevenue">TZS 0</h2>
+        </article>
+        <article class="stat-card">
+          <p>Gross Profit</p>
+          <h2 id="reportGross">TZS 0</h2>
+        </article>
+        <article class="stat-card">
+          <p>Net Profit</p>
+          <h2 id="reportNet">TZS 0</h2>
+        </article>
+        <article class="stat-card">
+          <p>Net Margin</p>
+          <h2 id="reportMargin">0%</h2>
+        </article>
+      </section>
+
+      <section class="dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Monthly Performance</h2>
+            <p>Revenue and net profit within the quarter</p>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="reportChart"></canvas>
+        </div>
+      </section>
+
+      <section class="dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Financial Breakdown</h2>
+            <p>How quarterly net profit is calculated</p>
+          </div>
+        </div>
+        <div id="financialBreakdown"></div>
+      </section>
+
+      <section class="dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Sales by Type</h2>
+            <p>Middleman versus own-stock performance</p>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Sale Type</th>
+                <th>Transactions</th>
+                <th>Revenue</th>
+                <th>Profit After Transaction Costs</th>
+              </tr>
+            </thead>
+            <tbody id="salesTypeTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Quarterly Transactions</h2>
+            <p>Sales and operating expenses in this period</p>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody id="reportTransactions"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,158 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventory | Timidy Store</title>
+
+  <link rel="stylesheet" href="css/style.css">
+
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="js/inventory.js" defer></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-icon">
+          <i data-lucide="monitor-smartphone"></i>
+        </span>
+        <span>Timidy Store</span>
+      </div>
+
+      <p class="nav-heading">MAIN MENU</p>
+      <nav class="nav">
+        <a href="index.html" class="nav-link">
+          <i data-lucide="layout-dashboard"></i> Dashboard
+        </a>
+        <a href="#" class="nav-link">
+          <i data-lucide="shopping-bag"></i> Sales
+        </a>
+        <a href="inventory.html" class="nav-link active">
+          <i data-lucide="package"></i> Inventory
+        </a>
+        <a href="customers.html" class="nav-link">
+        <i data-lucide="users"></i> Customers
+        </a>
+        <a href="expenses.html" class="nav-link">
+  <i data-lucide="wallet"></i> Expenses
+</a>
+       <a href="reports.html" class="nav-link">
+  <i data-lucide="file-chart-column"></i> Reports
+</a>
+        <a href="#" class="nav-link">
+          <i data-lucide="settings"></i> Settings
+        </a>
+      </nav>
+    </aside>
+
+    <div class="main-area">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Manage your products</p>
+          <h1>Inventory Management</h1>
+        </div>
+        <button id="themeToggle" class="theme-toggle">🌙</button>
+      </header>
+
+      <main class="content">
+        <section class="stats-grid">
+          <article class="stat-card">
+            <p>Total Products</p>
+            <h2 id="totalProducts">0</h2>
+          </article>
+          <article class="stat-card">
+            <p>Total Units</p>
+            <h2 id="totalUnits">0</h2>
+          </article>
+          <article class="stat-card">
+            <p>Inventory Value</p>
+            <h2 id="inventoryValue">TZS 0</h2>
+          </article>
+          <article class="stat-card">
+            <p>Low Stock Alerts</p>
+            <h2 id="lowStockCount">0</h2>
+          </article>
+        </section>
+
+        <section class="dashboard-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Add New Product</h2>
+              <p>Register items purchased for resale</p>
+            </div>
+          </div>
+
+          <form id="productForm" class="product-form">
+            <div class="form-group">
+              <label for="productName">Product Name</label>
+              <input id="productName" required placeholder="e.g. HP EliteBook 840 G5">
+            </div>
+
+            <div class="form-group">
+              <label for="category">Category</label>
+              <select id="category">
+                <option value="Computer">Computer</option>
+                <option value="Mobile">Mobile</option>
+                <option value="Accessory">Accessory</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="purchasePrice">Purchase Price (TZS)</label>
+              <input id="purchasePrice" type="number" min="0" step="1" required>
+            </div>
+
+            <div class="form-group">
+              <label for="sellingPrice">Selling Price (TZS)</label>
+              <input id="sellingPrice" type="number" min="0" step="1" required>
+            </div>
+
+            <div class="form-group">
+              <label for="quantity">Quantity</label>
+              <input id="quantity" type="number" min="1" step="1" required>
+            </div>
+
+            <div class="form-group">
+              <label for="minimumStock">Low Stock Threshold</label>
+              <input id="minimumStock" type="number" min="0" step="1" value="3" required>
+            </div>
+
+            <button type="submit" class="primary-btn">
+              <i data-lucide="plus"></i> Add Product
+            </button>
+          </form>
+        </section>
+
+        <section class="dashboard-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Available Stock</h2>
+              <p>Products currently registered</p>
+            </div>
+            <input id="searchProduct" class="search-input"
+                   placeholder="Search products...">
+          </div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Category</th>
+                  <th>Cost</th>
+                  <th>Selling Price</th>
+                  <th>Remaining</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="inventoryTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

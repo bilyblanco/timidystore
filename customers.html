@@ -1,0 +1,197 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+  <title>Customers | Timidy Store</title>
+
+  <link rel="stylesheet" href="css/style.css">
+
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="js/customers.js" defer></script>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-icon">
+        <i data-lucide="monitor-smartphone"></i>
+      </span>
+      <span>Timidy Store</span>
+    </div>
+
+    <p class="nav-heading">MAIN MENU</p>
+    <nav class="nav">
+      <a href="index.html" class="nav-link">
+        <i data-lucide="layout-dashboard"></i> Dashboard
+      </a>
+      <a href="sales.html" class="nav-link">
+        <i data-lucide="shopping-bag"></i> Sales
+      </a>
+      <a href="inventory.html" class="nav-link">
+        <i data-lucide="package"></i> Inventory
+      </a>
+      <a href="customers.html" class="nav-link active">
+        <i data-lucide="users"></i> Customers
+      </a>
+      <a href="expenses.html" class="nav-link">
+  <i data-lucide="wallet"></i> Expenses
+</a>
+      <a href="reports.html" class="nav-link">
+  <i data-lucide="file-chart-column"></i> Reports
+</a>
+      <a href="#" class="nav-link">
+        <i data-lucide="settings"></i> Settings
+      </a>
+    </nav>
+  </aside>
+
+  <div class="main-area">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Customer Relationships</p>
+        <h1>Customer Management</h1>
+      </div>
+      <button id="themeToggle"
+              class="theme-toggle"
+              aria-label="Toggle theme">🌙</button>
+    </header>
+
+    <main class="content">
+      <section class="stats-grid">
+        <article class="stat-card">
+          <p>Total Customers</p>
+          <h2 id="totalCustomers">0</h2>
+        </article>
+        <article class="stat-card">
+          <p>Customers With Purchases</p>
+          <h2 id="activeCustomers">0</h2>
+        </article>
+        <article class="stat-card">
+          <p>Marketing Opt-ins</p>
+          <h2 id="marketingCustomers">0</h2>
+        </article>
+        <article class="stat-card">
+          <p>Total Customer Spending</p>
+          <h2 id="customerSpending">TZS 0</h2>
+        </article>
+      </section>
+
+      <section class="dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <h2 id="formTitle">Add New Customer</h2>
+            <p>Save customer contact information</p>
+          </div>
+        </div>
+
+        <form id="customerForm" class="product-form">
+          <div class="form-group">
+            <label for="customerName">Full Name</label>
+            <input id="customerName" required
+                   placeholder="e.g. John Mwita">
+          </div>
+
+          <div class="form-group">
+            <label for="customerPhone">Phone Number</label>
+            <input id="customerPhone" type="tel"
+                   placeholder="+2557XXXXXXXX">
+          </div>
+
+          <div class="form-group">
+            <label for="customerEmail">Email Address</label>
+            <input id="customerEmail" type="email"
+                   placeholder="customer@example.com">
+          </div>
+
+          <div class="form-group">
+            <label for="customerNotes">Notes</label>
+            <input id="customerNotes"
+                   placeholder="Interested in laptops">
+          </div>
+
+          <div class="form-group consent-field">
+            <label class="consent-label">
+              <input id="marketingConsent"
+                     type="checkbox">
+              Customer has explicitly agreed to
+              receive marketing messages.
+            </label>
+          </div>
+
+          <button type="submit" class="primary-btn">
+            <i data-lucide="user-plus"></i>
+            <span id="saveCustomerLabel">Save Customer</span>
+          </button>
+
+          <button type="button" id="cancelEdit"
+                  class="secondary-btn hidden">
+            Cancel Editing
+          </button>
+        </form>
+
+        <p id="customerMessage" class="sale-message"
+           role="status"></p>
+      </section>
+
+      <section class="dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Customer Directory</h2>
+            <p>Contacts and purchase activity</p>
+          </div>
+          <input id="searchCustomer"
+                 class="search-input"
+                 placeholder="Search customers...">
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>Purchases</th>
+                <th>Total Spent</th>
+                <th>Marketing</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="customersTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="historyPanel"
+               class="dashboard-panel hidden">
+        <div class="panel-header">
+          <div>
+            <h2 id="historyTitle">Purchase History</h2>
+            <p>Transactions linked to this customer</p>
+          </div>
+          <button type="button" id="closeHistory"
+                  class="secondary-btn">Close</button>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Product</th>
+                <th>Sale Type</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody id="historyTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+</body>
+</html>

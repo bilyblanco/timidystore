@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+  <title>Sales | Timidy Store</title>
+
+  <link rel="stylesheet" href="css/style.css">
+
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="js/sales.js" defer></script>
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-icon">
+        <i data-lucide="monitor-smartphone"></i>
+      </span>
+      <span>Timidy Store</span>
+    </div>
+
+    <p class="nav-heading">MAIN MENU</p>
+
+    <nav class="nav">
+      <a href="index.html" class="nav-link">
+        <i data-lucide="layout-dashboard"></i> Dashboard
+      </a>
+      <a href="sales.html" class="nav-link active">
+        <i data-lucide="shopping-bag"></i> Sales
+      </a>
+      <a href="inventory.html" class="nav-link">
+        <i data-lucide="package"></i> Inventory
+      </a>
+      <a href="customers.html" class="nav-link">
+        <i data-lucide="users"></i> Customers
+        </a>
+      <a href="expenses.html" class="nav-link">
+  <i data-lucide="wallet"></i> Expenses
+</a>
+     <a href="reports.html" class="nav-link">
+  <i data-lucide="file-chart-column"></i> Reports
+</a>
+      <a href="#" class="nav-link">
+        <i data-lucide="settings"></i> Settings
+      </a>
+    </nav>
+  </aside>
+
+  <div class="main-area">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Business Transactions</p>
+        <h1>Sales Management</h1>
+      </div>
+      <button id="themeToggle"
+              class="theme-toggle">🌙</button>
+    </header>
+
+    <main class="content">
+
+      <section class="stats-grid">
+        <article class="stat-card">
+          <p>Total Sales</p>
+          <h2 id="totalSales">TZS 0</h2>
+        </article>
+        <article class="stat-card">
+          <p>Middleman Profit</p>
+          <h2 id="middlemanProfit">TZS 0</h2>
+        </article>
+        <article class="stat-card">
+          <p>Stock Profit</p>
+          <h2 id="stockProfit">TZS 0</h2>
+        </article>
+        <article class="stat-card">
+          <p>Total Sales Profit</p>
+          <h2 id="totalProfit">TZS 0</h2>
+        </article>
+      </section>
+
+      <section class="dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Record New Sale</h2>
+            <p>Choose the type of transaction</p>
+          </div>
+        </div>
+
+        <div class="sale-tabs">
+          <button type="button" id="middlemanTab"
+                  class="sale-tab active">
+            Middleman Sale
+          </button>
+          <button type="button" id="stockTab"
+                  class="sale-tab">
+            Own Stock Sale
+          </button>
+        </div>
+
+        <form id="saleForm" class="product-form">
+
+          <div id="middlemanFields" class="sale-fields">
+            <div class="form-group">
+              <label for="middlemanProduct">
+                Product Name
+              </label>
+              <input id="middlemanProduct"
+                     placeholder="e.g. Dell Latitude">
+            </div>
+
+            <div class="form-group">
+              <label for="supplierCost">
+                Total Supplier Cost (TZS)
+              </label>
+              <input id="supplierCost" type="number"
+                     min="0" step="1">
+            </div>
+          </div>
+
+          <div id="stockFields"
+               class="sale-fields hidden">
+            <div class="form-group">
+              <label for="stockProduct">
+                Select Product
+              </label>
+              <select id="stockProduct">
+                <option value="">Select stock</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="stockQuantity">
+                Quantity to Sell
+              </label>
+              <input id="stockQuantity" type="number"
+                     min="1" step="1" value="1">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="saleAmount">
+              Total Selling Amount (TZS)
+            </label>
+            <input id="saleAmount" type="number"
+                   min="0" step="1" required>
+          </div>
+
+          <div class="form-group">
+            <label for="saleExpenses">
+              Transaction Expenses (TZS)
+            </label>
+            <input id="saleExpenses" type="number"
+                   min="0" step="1" value="0" required>
+          </div>
+
+          <div class="form-group">
+            <label for="saleDate">Sale Date</label>
+            <input id="saleDate" type="date" required>
+          </div>
+
+          
+<div class="form-group">
+  <label for="customerName">Customer Name (Optional)</label>
+  <input id="customerName"
+         placeholder="e.g. John Mwita">
+</div>
+
+            <div class="form-group">
+            <label for="customerPhone">Customer Phone</label>
+            <input id="customerPhone" type="tel"
+                    placeholder="+2557XXXXXXXX">
+            </div>
+
+            <div class="form-group">
+            <label for="customerEmail">Customer Email</label>
+            <input id="customerEmail" type="email"
+                    placeholder="customer@example.com">
+            </div>
+
+            <div class="form-group consent-field">
+            <label class="consent-label">
+                <input id="customerMarketingConsent"
+                    type="checkbox">
+                Customer explicitly agreed to receive
+                promotional messages.
+            </label>
+            </div>
+
+
+          <div class="profit-preview">
+            <span>Estimated Transaction Profit</span>
+            <strong id="profitPreview">TZS 0</strong>
+          </div>
+
+          <button type="submit" class="primary-btn">
+            <i data-lucide="check-circle"></i>
+            Save Sale
+          </button>
+        </form>
+
+        <p id="saleMessage" class="sale-message"
+           role="status"></p>
+      </section>
+
+      <section class="dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Sales History</h2>
+            <p>All recorded transactions</p>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Product</th>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Profit</th>
+              </tr>
+            </thead>
+            <tbody id="salesTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+</body>
+</html>
