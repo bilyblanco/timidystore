@@ -1192,3 +1192,535 @@ th {
 }
 
 
+.inventory-actions {
+  white-space: nowrap;
+}
+
+.inventory-action-btn {
+  padding: 7px 10px;
+  margin: 3px;
+  border: 1px solid var(--border, #dce1e8);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.inventory-action-btn:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.restock-btn {
+  color: #16a34a;
+}
+
+.history-btn {
+  color: #6366f1;
+}
+
+
+/* ===================================
+   TIMIDY STORE - STOCK HISTORY MODAL
+=================================== */
+
+.stock-history-overlay[hidden] {
+  display: none !important;
+}
+
+.stock-history-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+  background: rgba(8, 15, 30, 0.75);
+  backdrop-filter: blur(6px);
+}
+
+.stock-history-dialog {
+  width: min(850px, 100%);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  background: #ffffff;
+  color: #172033;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25);
+  animation: stock-history-enter 0.25s ease;
+}
+
+.stock-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.stock-history-header h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.stock-history-header p {
+  margin: 0;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.stock-history-close {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 26px;
+  cursor: pointer;
+}
+
+.stock-history-close:hover {
+  background: #e2e8f0;
+}
+
+.stock-history-table-wrap {
+  overflow: auto;
+  padding: 0 24px 24px;
+}
+
+.stock-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 590px;
+}
+
+.stock-history-table th,
+.stock-history-table td {
+  padding: 15px 12px;
+  text-align: left;
+  font-size: 13px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.stock-history-table th {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.stock-change-positive {
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.stock-change-negative {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.stock-history-empty {
+  padding: 30px !important;
+  text-align: center !important;
+  color: #64748b;
+}
+
+body.stock-history-open {
+  overflow: hidden;
+}
+
+/* Dark mode */
+
+.dark .stock-history-dialog {
+  background: #172033;
+  color: #f8fafc;
+}
+
+.dark .stock-history-header,
+.dark .stock-history-table th,
+.dark .stock-history-table td {
+  border-color: #334155;
+}
+
+.dark .stock-history-header p,
+.dark .stock-history-table th {
+  color: #94a3b8;
+}
+
+.dark .stock-history-close {
+  background: #334155;
+  color: #f8fafc;
+}
+
+.dark .stock-history-close:hover {
+  background: #475569;
+}
+
+/* Mobile */
+
+@media (max-width: 768px) {
+  .stock-history-overlay {
+    padding: 12px;
+  }
+
+  .stock-history-dialog {
+    max-height: 90vh;
+    border-radius: 14px;
+  }
+
+  .stock-history-header {
+    padding: 18px;
+  }
+
+  .stock-history-header h2 {
+    font-size: 19px;
+  }
+
+  .stock-history-table-wrap {
+    padding: 0 12px 18px;
+  }
+}
+
+@keyframes stock-history-enter {
+  from {
+    opacity: 0;
+    transform: translateY(15px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stock-history-dialog {
+    animation: none;
+  }
+}
+
+
+/* =====================================
+   TIMIDY STORE - SALE DETAILS
+===================================== */
+
+.sale-view-btn {
+  padding: 7px 14px;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 8px;
+  background: transparent;
+  color: #6366f1;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sale-view-btn:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.sale-details-overlay[hidden] {
+  display: none !important;
+}
+
+.sale-details-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+  background: rgba(8, 15, 30, 0.78);
+  backdrop-filter: blur(6px);
+}
+
+.sale-details-dialog {
+  width: min(540px, 100%);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  background: #ffffff;
+  color: #172033;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+  animation: sale-details-enter 0.25s ease;
+}
+
+.sale-details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.sale-details-header h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.sale-details-header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.sale-details-close {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 26px;
+  cursor: pointer;
+}
+
+.sale-details-close:hover {
+  background: #e2e8f0;
+}
+
+.sale-details-body {
+  padding: 12px 24px 24px;
+  overflow-y: auto;
+}
+
+.sale-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 13px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px;
+}
+
+.sale-detail-label {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.sale-detail-value {
+  max-width: 65%;
+  overflow-wrap: anywhere;
+  text-align: right;
+  font-weight: 600;
+}
+
+.sale-details-divider {
+  margin: 16px 0;
+  border: none;
+  border-top: 1px solid #cbd5e1;
+}
+
+.sale-profit-positive {
+  color: #16a34a;
+}
+
+.sale-profit-negative {
+  color: #dc2626;
+}
+
+body.sale-details-open {
+  overflow: hidden;
+}
+
+/* Dark mode */
+
+.dark .sale-details-dialog {
+  background: #172033;
+  color: #f8fafc;
+}
+
+.dark .sale-details-header,
+.dark .sale-detail-row {
+  border-color: #334155;
+}
+
+.dark .sale-details-header p,
+.dark .sale-detail-label {
+  color: #94a3b8;
+}
+
+.dark .sale-details-close {
+  background: #334155;
+  color: #f8fafc;
+}
+
+.dark .sale-details-close:hover {
+  background: #475569;
+}
+
+.dark .sale-details-divider {
+  border-color: #475569;
+}
+
+/* Mobile */
+
+@media (max-width: 768px) {
+  .sale-details-overlay {
+    padding: 12px;
+  }
+
+  .sale-details-dialog {
+    max-height: 92vh;
+    border-radius: 14px;
+  }
+
+  .sale-details-header {
+    padding: 18px;
+  }
+
+  .sale-details-header h2 {
+    font-size: 19px;
+  }
+
+  .sale-details-body {
+    padding: 10px 18px 18px;
+  }
+
+  .sale-detail-row {
+    font-size: 12px;
+  }
+}
+
+@keyframes sale-details-enter {
+  from {
+    opacity: 0;
+    transform: translateY(15px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sale-details-dialog {
+    animation: none;
+  }
+}
+
+
+/* =====================================
+   TIMIDY STORE - RECEIPT DOWNLOAD
+===================================== */
+
+.receipt-download-btn {
+  display: block;
+  width: 100%;
+  margin-top: 24px;
+  padding: 14px 18px;
+  border: none;
+  border-radius: 10px;
+  background: #4f46e5;
+  color: #ffffff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.receipt-download-btn:hover {
+  background: #4338ca;
+  transform: translateY(-1px);
+}
+
+.receipt-download-btn:active {
+  transform: translateY(0);
+}
+
+.receipt-download-btn:focus-visible {
+  outline: 3px solid #818cf8;
+  outline-offset: 3px;
+}
+
+.dark .receipt-download-btn {
+  background: #6366f1;
+}
+
+.dark .receipt-download-btn:hover {
+  background: #4f46e5;
+}
+
+
+/* =====================================
+   TIMIDY STORE - VOID SALES
+===================================== */
+
+.sale-void-btn {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 13px 18px;
+  border: 1px solid #dc2626;
+  border-radius: 10px;
+  background: transparent;
+  color: #dc2626;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.sale-void-btn:hover {
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.sale-void-btn[hidden],
+.receipt-download-btn[hidden] {
+  display: none !important;
+}
+
+.sale-voided-row {
+  opacity: 0.65;
+}
+
+.sale-voided-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 5px 9px;
+  border-radius: 20px;
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dark .sale-void-btn {
+  color: #f87171;
+  border-color: #f87171;
+}
+
+.dark .sale-voided-badge {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.15);
+}
+
+@media (max-width: 768px) {
+  .sale-voided-badge {
+    display: block;
+    width: fit-content;
+    margin: 6px 0 0;
+  }
+}

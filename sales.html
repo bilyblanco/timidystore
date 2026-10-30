@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="css/style.css">
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="js/sales.js" defer></script>
   <script src="js/mobile-menu.js"></script>
   <script src="js/admin-profile.js" defer></script>
@@ -49,9 +50,9 @@
      <a href="reports.html" class="nav-link">
   <i data-lucide="file-chart-column"></i> Reports
 </a>
-      <a href="#" class="nav-link">
-        <i data-lucide="settings"></i> Settings
-      </a>
+      <a href="settings.html" class="nav-link">
+  <i data-lucide="settings"></i> Settings
+</a>
     </nav>
 
     <div class="sidebar-footer">
@@ -112,6 +113,9 @@
   <a href="reports.html">
     <i data-lucide="file-chart-column"></i> Reports
   </a>
+  <a href="settings.html">
+  <i data-lucide="settings"></i> Settings
+</a>
 </nav>
 
       <div>
@@ -283,6 +287,7 @@
                 <th>Type</th>
                 <th>Amount</th>
                 <th>Profit</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="salesTable"></tbody>

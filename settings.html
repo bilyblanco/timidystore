@@ -1,0 +1,528 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Timidy Store | Settings</title>
+
+  <script src="js/theme-init.js"></script>
+
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/settings.css">
+
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+
+  <script src="js/mobile-menu.js" defer></script>
+  <script src="js/admin-profile.js" defer></script>
+  <script src="js/settings.js" defer></script>
+</head>
+
+<body>
+  <div class="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="brand">
+        <a
+          href="index.html"
+          class="sidebar-brand"
+          aria-label="Go to dashboard"
+        >
+          <img
+            src="images/company-logo.png"
+            alt="Timidy Store logo"
+            class="company-logo"
+          >
+        </a>
+      </div>
+
+      <p class="nav-heading">MAIN MENU</p>
+
+      <nav class="nav" aria-label="Main navigation">
+        <a href="index.html" class="nav-link">
+          <i data-lucide="layout-dashboard"></i>
+          Dashboard
+        </a>
+
+        <a href="sales.html" class="nav-link">
+          <i data-lucide="shopping-bag"></i>
+          Sales
+        </a>
+
+        <a href="inventory.html" class="nav-link">
+          <i data-lucide="package"></i>
+          Inventory
+        </a>
+
+        <a href="customers.html" class="nav-link">
+          <i data-lucide="users"></i>
+          Customers
+        </a>
+
+        <a href="expenses.html" class="nav-link">
+          <i data-lucide="wallet"></i>
+          Expenses
+        </a>
+
+        <a href="reports.html" class="nav-link">
+          <i data-lucide="file-chart-column"></i>
+          Reports
+        </a>
+
+        <a
+          href="settings.html"
+          class="nav-link active"
+          aria-current="page"
+        >
+          <i data-lucide="settings"></i>
+          Settings
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button
+          type="button"
+          class="admin-avatar-button"
+          aria-label="View administrator profile picture"
+          title="View profile picture"
+        >
+          <img
+            src="images/admin-profile.jpg"
+            alt="Administrator"
+            class="admin-avatar"
+          >
+        </button>
+
+        <div>
+          <strong>Allan</strong>
+
+          <div class="admin-connection" role="status">
+            <span class="connection-dot"></span>
+            <span class="connection-label">Checking...</span>
+          </div>
+
+          <small>Administrator</small>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-area">
+
+      <header class="topbar">
+
+        <button
+          id="mobileMenuToggle"
+          class="mobile-menu-toggle"
+          type="button"
+          aria-label="Open navigation menu"
+          aria-expanded="false"
+          aria-controls="mobileNavigation"
+        >
+          <i data-lucide="menu"></i>
+          <span>Menu</span>
+        </button>
+
+        <nav
+          id="mobileNavigation"
+          class="mobile-navigation"
+          aria-label="Mobile navigation"
+          hidden
+        >
+          <a href="index.html">
+            <i data-lucide="layout-dashboard"></i>
+            Dashboard
+          </a>
+
+          <a href="sales.html">
+            <i data-lucide="shopping-bag"></i>
+            Sales
+          </a>
+
+          <a href="inventory.html">
+            <i data-lucide="package"></i>
+            Inventory
+          </a>
+
+          <a href="customers.html">
+            <i data-lucide="users"></i>
+            Customers
+          </a>
+
+          <a href="expenses.html">
+            <i data-lucide="wallet"></i>
+            Expenses
+          </a>
+
+          <a href="reports.html">
+            <i data-lucide="file-chart-column"></i>
+            Reports
+          </a>
+
+          <a href="settings.html" aria-current="page">
+            <i data-lucide="settings"></i>
+            Settings
+          </a>
+        </nav>
+
+        <div class="dashboard-greeting">
+          <h1 class="greeting-title">Settings</h1>
+
+          <p class="greeting-subtitle">
+            Manage your business information, preferences,
+            and store data.
+          </p>
+        </div>
+
+        <div class="header-actions">
+          <span class="demo-label">LOCAL DATA</span>
+
+          <button
+            id="themeToggle"
+            class="theme-toggle"
+            type="button"
+            aria-label="Toggle dark mode"
+          >
+            🌙
+          </button>
+        </div>
+      </header>
+
+      <main class="content settings-content">
+
+        <div
+          id="settingsMessage"
+          class="settings-message"
+          role="status"
+          aria-live="polite"
+          hidden
+        ></div>
+
+        <!-- BUSINESS PROFILE -->
+        <section class="dashboard-panel settings-panel">
+          <div class="settings-section-heading">
+            <div class="settings-section-icon">
+              <i data-lucide="store"></i>
+            </div>
+
+            <div>
+              <h2>Business Profile</h2>
+              <p>Manage your store's basic information.</p>
+            </div>
+          </div>
+
+          <form id="businessProfileForm">
+            <div class="settings-form-grid">
+
+              <div class="settings-field">
+                <label for="businessName">Business Name</label>
+                <input
+                  id="businessName"
+                  type="text"
+                  maxlength="100"
+                  value="Timidy Store"
+                  required
+                >
+              </div>
+
+              <div class="settings-field">
+                <label for="businessOwner">Business Owner</label>
+                <input
+                  id="businessOwner"
+                  type="text"
+                  maxlength="100"
+                  value="Allan"
+                  required
+                >
+              </div>
+
+              <div class="settings-field">
+                <label for="businessPhone">Business Phone</label>
+                <input
+                  id="businessPhone"
+                  type="tel"
+                  maxlength="30"
+                  placeholder="+255..."
+                >
+              </div>
+
+              <div class="settings-field">
+                <label for="businessEmail">Business Email</label>
+                <input
+                  id="businessEmail"
+                  type="email"
+                  maxlength="150"
+                  placeholder="store@example.com"
+                >
+              </div>
+
+              <div class="settings-field">
+                <label for="businessLocation">Location</label>
+                <input
+                  id="businessLocation"
+                  type="text"
+                  maxlength="150"
+                  placeholder="City, Tanzania"
+                >
+              </div>
+
+              <div class="settings-field">
+                <label for="businessCurrency">Currency</label>
+                <select id="businessCurrency" disabled>
+                  <option value="TZS">
+                    Tanzanian Shilling (TZS)
+                  </option>
+                </select>
+
+                <small>
+                  Financial records currently use TZS.
+                </small>
+              </div>
+
+            </div>
+
+            <div class="settings-actions">
+              <button
+                type="submit"
+                class="settings-btn settings-btn-primary"
+              >
+                <i data-lucide="save"></i>
+                Save Business Profile
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <!-- APPEARANCE -->
+        <section class="dashboard-panel settings-panel">
+          <div class="settings-section-heading">
+            <div class="settings-section-icon">
+              <i data-lucide="palette"></i>
+            </div>
+
+            <div>
+              <h2>Appearance</h2>
+              <p>Choose your preferred interface theme.</p>
+            </div>
+          </div>
+
+          <div class="settings-theme-options">
+            <label class="settings-theme-option">
+              <input
+                type="radio"
+                name="settingsTheme"
+                value="light"
+              >
+
+              <i data-lucide="sun"></i>
+
+              <span>
+                <strong>Light Mode</strong>
+                <small>Bright, clean appearance</small>
+              </span>
+            </label>
+
+            <label class="settings-theme-option">
+              <input
+                type="radio"
+                name="settingsTheme"
+                value="dark"
+              >
+
+              <i data-lucide="moon"></i>
+
+              <span>
+                <strong>Dark Mode</strong>
+                <small>Comfortable in low light</small>
+              </span>
+            </label>
+          </div>
+
+          <p class="settings-help">
+            Your theme preference is saved automatically.
+          </p>
+        </section>
+
+        <!-- DATA MANAGEMENT -->
+        <section class="dashboard-panel settings-panel">
+          <div class="settings-section-heading">
+            <div class="settings-section-icon">
+              <i data-lucide="database"></i>
+            </div>
+
+            <div>
+              <h2>Data Management</h2>
+              <p>
+                Download a backup or restore your store records.
+              </p>
+            </div>
+          </div>
+
+          <div class="settings-data-grid">
+
+            <div class="settings-data-card">
+              <i data-lucide="download"></i>
+
+              <h3>Backup Store Data</h3>
+
+              <p>
+                Download your sales, inventory, customers,
+                expenses, stock history, and business settings
+                as a JSON file.
+              </p>
+
+              <button
+                id="backupData"
+                type="button"
+                class="settings-btn settings-btn-primary"
+              >
+                <i data-lucide="download"></i>
+                Download Backup
+              </button>
+            </div>
+
+            <div class="settings-data-card">
+              <i data-lucide="upload"></i>
+
+              <h3>Restore Store Data</h3>
+
+              <p>
+                Restore records from a Timidy Store backup.
+                Existing records will be replaced after confirmation.
+              </p>
+
+              <label
+                for="restoreFile"
+                class="settings-btn settings-btn-secondary"
+              >
+                <i data-lucide="upload"></i>
+                Choose Backup File
+              </label>
+
+              <input
+                id="restoreFile"
+                type="file"
+                accept=".json,application/json"
+                hidden
+              >
+            </div>
+
+          </div>
+
+          <p class="settings-warning">
+            <i data-lucide="alert-triangle"></i>
+            Data is currently stored in this browser.
+            Clearing browser storage may permanently remove it
+            unless you have a backup.
+          </p>
+        </section>
+
+        <!-- SYSTEM INFORMATION -->
+        <section class="dashboard-panel settings-panel">
+          <div class="settings-section-heading">
+            <div class="settings-section-icon">
+              <i data-lucide="info"></i>
+            </div>
+
+            <div>
+              <h2>System Information</h2>
+              <p>Overview of your current store records.</p>
+            </div>
+          </div>
+
+          <div class="settings-system-grid">
+
+            <div class="settings-system-item">
+              <span>Storage Mode</span>
+              <strong>Browser Local Storage</strong>
+            </div>
+
+            <div class="settings-system-item">
+              <span>Sales Records</span>
+              <strong id="settingsSalesCount">0</strong>
+            </div>
+
+            <div class="settings-system-item">
+              <span>Inventory Products</span>
+              <strong id="settingsInventoryCount">0</strong>
+            </div>
+
+            <div class="settings-system-item">
+              <span>Customers</span>
+              <strong id="settingsCustomersCount">0</strong>
+            </div>
+
+            <div class="settings-system-item">
+              <span>Expense Records</span>
+              <strong id="settingsExpensesCount">0</strong>
+            </div>
+
+            <div class="settings-system-item">
+              <span>Stock Movements</span>
+              <strong id="settingsHistoryCount">0</strong>
+            </div>
+
+            <div class="settings-system-item">
+              <span>Voided Sales</span>
+              <strong id="settingsVoidedCount">0</strong>
+            </div>
+
+            <div class="settings-system-item">
+              <span>Application</span>
+              <strong>Timidy Store</strong>
+            </div>
+
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="developer-footer">
+    <p>
+      Made with <span class="footer-heart">♥</span> by
+      <a
+        href="https://github.com/bilyblanco"
+        target="_blank"
+        rel="noopener noreferrer"
+      >BilyBlanco</a>
+    </p>
+  </footer>
+
+  <!-- PROFILE PREVIEW -->
+  <div
+    id="profilePreview"
+    class="profile-preview"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Administrator profile picture"
+    aria-hidden="true"
+    hidden
+  >
+    <div class="profile-preview-content">
+      <button
+        type="button"
+        class="profile-preview-close"
+        aria-label="Close profile picture"
+      >
+        &times;
+      </button>
+
+      <img
+        src="images/admin-profile.jpg"
+        alt="Administrator profile picture enlarged"
+        class="profile-preview-image"
+      >
+
+      <div class="profile-preview-name">
+        Administrator
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
