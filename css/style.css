@@ -7,8 +7,10 @@
   --border: #e7ebf2;
   --accent: #386cf4;
   --sidebar: #111c32;
+  color-scheme: light;
 }
 
+:root.dark,
 body.dark {
   --bg: #0d1423;
   --surface: #192438;
@@ -16,6 +18,7 @@ body.dark {
   --muted: #9baac1;
   --border: #2c3b51;
   --sidebar: #080f1d;
+  color-scheme: dark;
 }
 
 * {
@@ -1187,6 +1190,5 @@ th {
     animation: none;
   }
 }
-
 
 

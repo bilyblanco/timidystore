@@ -498,6 +498,7 @@ const themeToggle = el("themeToggle");
 
 function applyTheme(theme) {
   const dark = theme === "dark";
+  document.documentElement.classList.toggle("dark", dark);
   document.body.classList.toggle("dark", dark);
   themeToggle.textContent = dark ? "☀️" : "🌙";
 }
