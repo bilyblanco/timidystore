@@ -12,15 +12,19 @@
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
   <script src="js/customers.js" defer></script>
   <script src="js/mobile-menu.js"></script>
+  <script src="js/admin-profile.js" defer></script>
 </head>
 <body>
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
-      <span class="brand-icon">
-        <i data-lucide="monitor-smartphone"></i>
-      </span>
-      <span>Timidy Store</span>
+      <a href="index.html" class="sidebar-brand" aria-label="Go to dashboard">
+  <img
+    src="images/company-logo.png"
+    alt="Company Logo"
+    class="company-logo"
+  >
+</a>
     </div>
 
     <p class="nav-heading">MAIN MENU</p>
@@ -47,6 +51,29 @@
         <i data-lucide="settings"></i> Settings
       </a>
     </nav>
+
+    <div class="sidebar-footer">
+  <button
+  type="button"
+  class="admin-avatar-button"
+  aria-label="View administrator profile picture"
+  title="View profile picture"
+>
+  <img
+    src="images/admin-profile.jpg"
+    alt="Administrator"
+    class="admin-avatar"
+  >
+</button>
+        <div>
+          <strong>Allan</strong>
+          <div class="admin-connection" role="status">
+            <span class="connection-dot"></span>
+            <span class="connection-label">Checking...</span>
+          </div>
+          <small>Administrator</small>
+        </div>
+      </div>
   </aside>
 
   <div class="main-area">
@@ -237,5 +264,32 @@
     >BilyBlanco</a>
   </p>
 </footer>
+<div
+  id="profilePreview"
+  class="profile-preview"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Administrator profile picture"
+  aria-hidden="true"
+  hidden
+>
+  <div class="profile-preview-content">
+    <button
+      type="button"
+      class="profile-preview-close"
+      aria-label="Close profile picture"
+    >
+      &times;
+    </button>
+
+    <img
+      src="images/admin-profile.jpg"
+      alt="Administrator profile picture enlarged"
+      class="profile-preview-image"
+    >
+
+    <div class="profile-preview-name">Administrator</div>
+  </div>
+</div>
 </body>
 </html>
