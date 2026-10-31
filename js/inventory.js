@@ -15,6 +15,7 @@ if (!db) {
 const form = document.getElementById("productForm");
 const table = document.getElementById("inventoryTable");
 const search = document.getElementById("searchProduct");
+const message = document.getElementById("inventoryMessage");
 
 let products = [];
 let productById = new Map();
@@ -61,9 +62,21 @@ const formatMoney = amount =>
 function showError(message, error) {
   console.error(message, error);
 
-  alert(
+  showMessage(
     `${message}\n` +
-    (error?.message || "Please try again.")
+    (error?.message || "Please try again."),
+    "error"
+  );
+}
+
+function showMessage(text, type = "") {
+  if (!message) return;
+
+  message.textContent = text;
+  message.className = "sale-message " + type;
+  message.setAttribute(
+    "role",
+    type === "error" ? "alert" : "status"
   );
 }
 
@@ -530,8 +543,9 @@ async function addProduct(event) {
     !Number.isInteger(minimumStock) ||
     minimumStock < 0
   ) {
-    alert(
-      "Please enter valid product details."
+    showMessage(
+      "Please enter valid product details.",
+      "error"
     );
 
     return;
@@ -547,9 +561,10 @@ async function addProduct(event) {
   );
 
   if (duplicate) {
-    alert(
+    showMessage(
       "This product already exists.\n" +
-      "Use Restock instead."
+      "Use Restock instead.",
+      "error"
     );
 
     return;
@@ -587,8 +602,9 @@ async function addProduct(event) {
 
     await loadProducts();
 
-    alert(
-      "Product added successfully!"
+    showMessage(
+      "Product added successfully!",
+      "success"
     );
   } catch (error) {
     if (committed) {
@@ -669,8 +685,9 @@ async function openEditProduct(productId) {
     !Number.isInteger(minimumStock) ||
     minimumStock < 0
   ) {
-    alert(
-      "Please enter valid product details."
+    showMessage(
+      "Please enter valid product details.",
+      "error"
     );
 
     return;
@@ -687,8 +704,9 @@ async function openEditProduct(productId) {
   );
 
   if (duplicate) {
-    alert(
-      "Another product already uses that name."
+    showMessage(
+      "Another product already uses that name.",
+      "error"
     );
 
     return;
@@ -726,8 +744,9 @@ async function openEditProduct(productId) {
 
     await loadProducts();
 
-    alert(
-      "Product updated successfully!"
+    showMessage(
+      "Product updated successfully!",
+      "success"
     );
   } catch (error) {
     showError(
@@ -781,8 +800,9 @@ async function openRestockProduct(productId) {
     !Number.isFinite(newUnitCost) ||
     newUnitCost < 0
   ) {
-    alert(
-      "Enter a valid quantity and purchase cost."
+    showMessage(
+      "Enter a valid quantity and purchase cost.",
+      "error"
     );
 
     return;
@@ -821,10 +841,11 @@ async function openRestockProduct(productId) {
 
     await loadProducts();
 
-    alert(
+    showMessage(
       `Added ${addedQuantity} units successfully!\n` +
       `New stock: ${result.new_quantity} units\n` +
-      `Average cost: ${formatMoney(result.average_cost)}`
+      `Average cost: ${formatMoney(result.average_cost)}`,
+      "success"
     );
   } catch (error) {
     showError(

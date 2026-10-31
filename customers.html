@@ -3,23 +3,22 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Customers | Timidy Store</title>
 
   <style>
-  html {
-    visibility: hidden;
-  }
-</style>
+    html {
+      visibility: hidden;
+    }
+  </style>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="js/supabase-config.js"></script>
-<script src="js/auth.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/supabase-config.js"></script>
+  <script src="js/auth.js"></script>
 
-<script>
-  TimidyAuth.requireAdmin();
-</script>
+  <script>
+    TimidyAuth.requireAdmin();
+  </script>
 
   <script src="js/theme-init.js"></script>
   <link rel="stylesheet" href="css/style.css">
@@ -29,106 +28,146 @@
   <script src="js/mobile-menu.js"></script>
   <script src="js/admin-profile.js" defer></script>
 </head>
+
 <body>
 <div class="app">
+
   <aside class="sidebar">
     <div class="brand">
-      <a href="index.html" class="sidebar-brand" aria-label="Go to dashboard">
-  <img
-    src="images/company-logo.png"
-    alt="Company Logo"
-    class="company-logo"
-  >
-</a>
+      <a
+        href="index.html"
+        class="sidebar-brand"
+        aria-label="Go to dashboard"
+      >
+        <img
+          src="images/company-logo.png"
+          alt="Company Logo"
+          class="company-logo"
+        >
+      </a>
     </div>
 
     <p class="nav-heading">MAIN MENU</p>
+
     <nav class="nav">
       <a href="index.html" class="nav-link">
-        <i data-lucide="layout-dashboard"></i> Dashboard
+        <i data-lucide="layout-dashboard"></i>
+        Dashboard
       </a>
+
       <a href="sales.html" class="nav-link">
-        <i data-lucide="shopping-bag"></i> Sales
+        <i data-lucide="shopping-bag"></i>
+        Sales
       </a>
+
       <a href="inventory.html" class="nav-link">
-        <i data-lucide="package"></i> Inventory
+        <i data-lucide="package"></i>
+        Inventory
       </a>
+
       <a href="customers.html" class="nav-link active">
-        <i data-lucide="users"></i> Customers
+        <i data-lucide="users"></i>
+        Customers
       </a>
+
       <a href="expenses.html" class="nav-link">
-  <i data-lucide="wallet"></i> Expenses
-</a>
+        <i data-lucide="wallet"></i>
+        Expenses
+      </a>
+
       <a href="reports.html" class="nav-link">
-  <i data-lucide="file-chart-column"></i> Reports
-</a>
+        <i data-lucide="file-chart-column"></i>
+        Reports
+      </a>
+
       <a href="settings.html" class="nav-link">
-  <i data-lucide="settings"></i> Settings
-</a>
+        <i data-lucide="settings"></i>
+        Settings
+      </a>
     </nav>
 
     <div class="sidebar-footer">
-  <button
-  type="button"
-  class="admin-avatar-button"
-  aria-label="View administrator profile picture"
-  title="View profile picture"
->
-  <img
-    src="images/admin-profile.jpg"
-    alt="Administrator"
-    class="admin-avatar"
-  >
-</button>
-        <div>
-          <strong>Allan</strong>
-          <div class="admin-connection" role="status">
-            <span class="connection-dot"></span>
-            <span class="connection-label">Checking...</span>
-          </div>
-          <small>Administrator</small>
+      <button
+        type="button"
+        class="admin-avatar-button"
+        aria-label="View administrator profile picture"
+        title="View profile picture"
+      >
+        <img
+          src="images/admin-profile.jpg"
+          alt="Administrator"
+          class="admin-avatar"
+        >
+      </button>
+
+      <div>
+        <strong>Allan</strong>
+
+        <div class="admin-connection" role="status">
+          <span class="connection-dot"></span>
+          <span class="connection-label">Checking...</span>
         </div>
+
+        <small>Administrator</small>
       </div>
+    </div>
   </aside>
 
   <div class="main-area">
     <header class="topbar">
 
-        <button
-  id="mobileMenuToggle"
-  class="mobile-menu-toggle"
-  type="button"
-  aria-label="Open navigation menu"
-  aria-expanded="false"
-  aria-controls="mobileNavigation"
->
-  <i data-lucide="menu"></i>
-  <span>Menu</span>
-</button>
+      <button
+        id="mobileMenuToggle"
+        class="mobile-menu-toggle"
+        type="button"
+        aria-label="Open navigation menu"
+        aria-expanded="false"
+        aria-controls="mobileNavigation"
+      >
+        <i data-lucide="menu"></i>
+        <span>Menu</span>
+      </button>
 
-<nav id="mobileNavigation" class="mobile-navigation" hidden>
-  <a href="index.html">
-    <i data-lucide="layout-dashboard"></i> Dashboard
-  </a>
-  <a href="sales.html">
-    <i data-lucide="shopping-bag"></i> Sales
-  </a>
-  <a href="inventory.html">
-    <i data-lucide="package"></i> Inventory
-  </a>
-  <a href="customers.html">
-    <i data-lucide="users"></i> Customers
-  </a>
-  <a href="expenses.html">
-    <i data-lucide="wallet"></i> Expenses
-  </a>
-  <a href="reports.html">
-    <i data-lucide="file-chart-column"></i> Reports
-  </a>
-  <a href="settings.html">
-  <i data-lucide="settings"></i> Settings
-</a>
-</nav>
+      <nav
+        id="mobileNavigation"
+        class="mobile-navigation"
+        hidden
+      >
+        <a href="index.html">
+          <i data-lucide="layout-dashboard"></i>
+          Dashboard
+        </a>
+
+        <a href="sales.html">
+          <i data-lucide="shopping-bag"></i>
+          Sales
+        </a>
+
+        <a href="inventory.html">
+          <i data-lucide="package"></i>
+          Inventory
+        </a>
+
+        <a href="customers.html">
+          <i data-lucide="users"></i>
+          Customers
+        </a>
+
+        <a href="expenses.html">
+          <i data-lucide="wallet"></i>
+          Expenses
+        </a>
+
+        <a href="reports.html">
+          <i data-lucide="file-chart-column"></i>
+          Reports
+        </a>
+
+        <a href="settings.html">
+          <i data-lucide="settings"></i>
+          Settings
+        </a>
+      </nav>
 
       <div>
         <h1>Customer Management</h1>
@@ -136,19 +175,23 @@
     </header>
 
     <main class="content">
+
       <section class="stats-grid">
         <article class="stat-card">
           <p>Total Customers</p>
           <h2 id="totalCustomers">0</h2>
         </article>
+
         <article class="stat-card">
           <p>Customers With Purchases</p>
           <h2 id="activeCustomers">0</h2>
         </article>
+
         <article class="stat-card">
           <p>Marketing Opt-ins</p>
           <h2 id="marketingCustomers">0</h2>
         </article>
+
         <article class="stat-card">
           <p>Total Customer Spending</p>
           <h2 id="customerSpending">TZS 0</h2>
@@ -163,53 +206,87 @@
           </div>
         </div>
 
-        <form id="customerForm" class="product-form">
+        <form
+          id="customerForm"
+          class="product-form"
+          autocomplete="off"
+        >
           <div class="form-group">
-            <label for="customerName">Full Name</label>
-            <input id="customerName" required
-                   placeholder="e.g. John Mwita">
+            <label for="customerName">
+              Full Name
+            </label>
+
+            <input
+              id="customerName"
+              type="text"
+              autocomplete="off"
+              placeholder="e.g. John Mwita"
+              required
+            >
           </div>
 
           <div class="form-group">
-            <label for="customerPhone">Phone Number</label>
-            <input id="customerPhone" type="tel"
-                   placeholder="+2557XXXXXXXX">
+            <label for="customerPhone">
+              Phone Number
+            </label>
+
+            <input
+              id="customerPhone"
+              type="tel"
+              autocomplete="off"
+              placeholder="+2557XXXXXXXX"
+              required
+            >
           </div>
 
           <div class="form-group">
-            <label for="customerEmail">Email Address</label>
-            <input id="customerEmail" type="email"
-                   placeholder="customer@example.com">
-          </div>
+            <label for="customerNotes">
+              Notes
+            </label>
 
-          <div class="form-group">
-            <label for="customerNotes">Notes</label>
-            <input id="customerNotes"
-                   placeholder="Interested in laptops">
+            <input
+              id="customerNotes"
+              type="text"
+              autocomplete="off"
+              placeholder="Interested in laptops"
+            >
           </div>
 
           <div class="form-group consent-field">
             <label class="consent-label">
-              <input id="marketingConsent"
-                     type="checkbox">
+              <input
+                id="marketingConsent"
+                type="checkbox"
+              >
               Customer has explicitly agreed to
               receive marketing messages.
             </label>
           </div>
 
-          <button type="submit" class="primary-btn">
+          <button
+            type="submit"
+            class="primary-btn"
+          >
             <i data-lucide="user-plus"></i>
-            <span id="saveCustomerLabel">Save Customer</span>
+            <span id="saveCustomerLabel">
+              Save Customer
+            </span>
           </button>
 
-          <button type="button" id="cancelEdit"
-                  class="secondary-btn hidden">
+          <button
+            type="button"
+            id="cancelEdit"
+            class="secondary-btn hidden"
+          >
             Cancel Editing
           </button>
         </form>
 
-        <p id="customerMessage" class="sale-message"
-           role="status"></p>
+        <p
+          id="customerMessage"
+          class="sale-message"
+          role="status"
+        ></p>
       </section>
 
       <section class="dashboard-panel">
@@ -218,9 +295,15 @@
             <h2>Customer Directory</h2>
             <p>Contacts and purchase activity</p>
           </div>
-          <input id="searchCustomer"
-                 class="search-input"
-                 placeholder="Search customers...">
+
+          <input
+            id="searchCustomer"
+            class="search-input"
+            type="search"
+            autocomplete="off"
+            placeholder="Search customers..."
+            aria-label="Search customers"
+          >
         </div>
 
         <div class="table-wrapper">
@@ -229,27 +312,37 @@
               <tr>
                 <th>Name</th>
                 <th>Phone</th>
-                <th>Email</th>
                 <th>Purchases</th>
                 <th>Total Spent</th>
                 <th>Marketing</th>
                 <th>Actions</th>
               </tr>
             </thead>
+
             <tbody id="customersTable"></tbody>
           </table>
         </div>
       </section>
 
-      <section id="historyPanel"
-               class="dashboard-panel hidden">
+      <section
+        id="historyPanel"
+        class="dashboard-panel hidden"
+      >
         <div class="panel-header">
           <div>
-            <h2 id="historyTitle">Purchase History</h2>
+            <h2 id="historyTitle">
+              Purchase History
+            </h2>
             <p>Transactions linked to this customer</p>
           </div>
-          <button type="button" id="closeHistory"
-                  class="secondary-btn">Close</button>
+
+          <button
+            type="button"
+            id="closeHistory"
+            class="secondary-btn"
+          >
+            Close
+          </button>
         </div>
 
         <div class="table-wrapper">
@@ -262,16 +355,21 @@
                 <th>Amount</th>
               </tr>
             </thead>
+
             <tbody id="historyTable"></tbody>
           </table>
         </div>
       </section>
+
     </main>
   </div>
 </div>
+
 <footer class="developer-footer">
   <p>
-    Made with <span class="footer-heart">♥</span> by
+    Made with
+    <span class="footer-heart">♥</span>
+    by
     <a
       href="https://github.com/bilyblanco"
       target="_blank"
@@ -279,6 +377,7 @@
     >BilyBlanco</a>
   </p>
 </footer>
+
 <div
   id="profilePreview"
   class="profile-preview"
@@ -303,8 +402,12 @@
       class="profile-preview-image"
     >
 
-    <div class="profile-preview-name">Administrator</div>
+    <div class="profile-preview-name">
+      Administrator
+    </div>
   </div>
 </div>
+
 </body>
 </html>
+

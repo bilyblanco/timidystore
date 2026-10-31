@@ -3,7 +3,7 @@
 
 // =====================================
 // TIMIDY STORE — SUPABASE SALES
-// Optimized loading and rendering
+// Optional IMEI / serial number support
 // =====================================
 
 const db = window.timidySupabase;
@@ -18,6 +18,8 @@ const stockTab = document.getElementById("stockTab");
 const stockSelect = document.getElementById("stockProduct");
 const salesTable = document.getElementById("salesTable");
 const message = document.getElementById("saleMessage");
+
+const SALES_REFRESH_INTERVAL = 60 * 1000;
 
 let saleType = "middleman";
 
@@ -37,9 +39,7 @@ let saleDetailsModal = null;
 let lastDetailsTrigger = null;
 let activeSaleId = null;
 
-// Refresh only after returning from a
-// sufficiently long period away.
-const SALES_REFRESH_INTERVAL = 60 * 1000;
+let receiptLogoPromise = null;
 
 // =====================================
 // HELPERS
@@ -76,8 +76,34 @@ function setMessage(text, type = "") {
   if (!message) return;
 
   message.textContent = text;
-  message.className =
-    "sale-message " + type;
+  message.className = "sale-message " + type;
+  message.setAttribute(
+    "role",
+    type === "error" ? "alert" : "status"
+  );
+}
+
+function setDetailsMessage(text, type = "error") {
+  if (
+    saleDetailsModal &&
+    !saleDetailsModal.hidden
+  ) {
+    const detailsMessage =
+      saleDetailsModal.querySelector(
+        "#saleDetailsMessage"
+      );
+
+    detailsMessage.textContent = text;
+    detailsMessage.className =
+      "sale-message " + type;
+    detailsMessage.setAttribute(
+      "role",
+      type === "error" ? "alert" : "status"
+    );
+    return;
+  }
+
+  setMessage(text, type);
 }
 
 function errorText(error) {
@@ -104,9 +130,7 @@ function validDate(value) {
     return false;
   }
 
-  const date = new Date(
-    value + "T00:00:00Z"
-  );
+  const date = new Date(value + "T00:00:00Z");
 
   return (
     !Number.isNaN(date.getTime()) &&
@@ -164,7 +188,7 @@ function mapSale(row) {
     date: row.date,
     customer: row.customer || "",
     customerPhone: row.customer_phone || "",
-    customerEmail: row.customer_email || "",
+    imei: row.imei || "",
     voided: row.voided,
     voidedAt: row.voided_at,
     voidReason: row.void_reason
@@ -199,7 +223,7 @@ function setBusy(value) {
 }
 
 // =====================================
-// LOAD DATA FROM SUPABASE
+// LOAD DATA
 // =====================================
 
 async function refreshData() {
@@ -222,8 +246,8 @@ async function refreshData() {
       .select(
         "id,type,status,customer_id,product_id," +
         "product_name,quantity,amount,cost,expenses," +
-        "profit,date,customer,customer_phone," +
-        "customer_email,voided,voided_at,void_reason"
+        "profit,date,customer,customer_phone,imei," +
+        "voided,voided_at,void_reason"
       )
       .order("date", {
         ascending: false
@@ -231,7 +255,7 @@ async function refreshData() {
 
     db
       .from("customers")
-      .select("id,name,phone,email")
+      .select("id,name,phone")
   ]);
 
   for (const result of [
@@ -244,8 +268,6 @@ async function refreshData() {
     }
   }
 
-  // Update all state only after every
-  // database request succeeds.
   const nextProducts = (
     inventoryResult.data || []
   ).map(mapProduct);
@@ -261,26 +283,16 @@ async function refreshData() {
   sales = nextSales;
   customers = nextCustomers;
 
-  // Fast lookups by ID.
   productById = new Map(
-    products.map(item => [
-      item.id,
-      item
-    ])
+    products.map(item => [item.id, item])
   );
 
   saleById = new Map(
-    sales.map(item => [
-      item.id,
-      item
-    ])
+    sales.map(item => [item.id, item])
   );
 
   customerById = new Map(
-    customers.map(item => [
-      item.id,
-      item
-    ])
+    customers.map(item => [item.id, item])
   );
 
   lastDataRefresh = Date.now();
@@ -291,7 +303,7 @@ async function refreshData() {
 }
 
 // =====================================
-// CUSTOMER INTEGRATION
+// CUSTOMER DETAILS
 // =====================================
 
 function getSaleCustomer(sale) {
@@ -308,11 +320,6 @@ function getSaleCustomer(sale) {
     phone:
       sale.customerPhone ||
       customer?.phone ||
-      "",
-
-    email:
-      sale.customerEmail ||
-      customer?.email ||
       ""
   };
 }
@@ -358,8 +365,7 @@ function changeSaleType(type) {
     "supplierCost"
   ).required = type === "middleman";
 
-  stockSelect.required =
-    type === "stock";
+  stockSelect.required = type === "stock";
 
   document.getElementById(
     "stockQuantity"
@@ -374,25 +380,19 @@ function changeSaleType(type) {
 // =====================================
 
 function renderStockOptions() {
-  const selectedProduct =
-    stockSelect.value;
+  const selectedProduct = stockSelect.value;
 
   const fragment =
     document.createDocumentFragment();
 
   fragment.appendChild(
-    new Option(
-      "Select available stock",
-      ""
-    )
+    new Option("Select available stock", "")
   );
 
   let selectedStillAvailable = false;
 
   products.forEach(product => {
-    if (product.quantity <= 0) {
-      return;
-    }
+    if (product.quantity <= 0) return;
 
     const option = new Option(
       `${product.name} (${product.quantity} available)`,
@@ -418,28 +418,19 @@ function renderStockOptions() {
 // =====================================
 
 function calculateProfit() {
-  const amount = numberFrom(
-    "saleAmount"
-  );
-
-  const expenses = numberFrom(
-    "saleExpenses"
-  );
+  const amount = numberFrom("saleAmount");
+  const expenses = numberFrom("saleExpenses");
 
   let cost = 0;
 
   if (saleType === "middleman") {
-    cost = numberFrom(
-      "supplierCost"
-    );
+    cost = numberFrom("supplierCost");
   } else {
     const product = productById.get(
       stockSelect.value
     );
 
-    if (!product) {
-      return 0;
-    }
+    if (!product) return 0;
 
     cost =
       product.purchasePrice *
@@ -475,11 +466,8 @@ function renderSales() {
   let middlemanProfit = 0;
   let stockProfit = 0;
 
-  // Calculate totals in one pass.
   sales.forEach(sale => {
-    if (isVoided(sale)) {
-      return;
-    }
+    if (isVoided(sale)) return;
 
     revenue += sale.amount;
 
@@ -496,15 +484,11 @@ function renderSales() {
 
   document.getElementById(
     "middlemanProfit"
-  ).textContent = money(
-    middlemanProfit
-  );
+  ).textContent = money(middlemanProfit);
 
   document.getElementById(
     "stockProfit"
-  ).textContent = money(
-    stockProfit
-  );
+  ).textContent = money(stockProfit);
 
   document.getElementById(
     "totalProfit"
@@ -512,24 +496,15 @@ function renderSales() {
     middlemanProfit + stockProfit
   );
 
-  // Supabase already orders sales by
-  // date descending. No second sort.
   const fragment =
     document.createDocumentFragment();
 
   if (sales.length === 0) {
-    const row = document.createElement(
-      "tr"
-    );
-
-    const cell = document.createElement(
-      "td"
-    );
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
 
     cell.colSpan = 6;
-    cell.textContent =
-      "No sales recorded yet.";
-
+    cell.textContent = "No sales recorded yet.";
     cell.style.textAlign = "center";
     cell.style.padding = "24px";
 
@@ -537,14 +512,10 @@ function renderSales() {
     fragment.appendChild(row);
   } else {
     sales.forEach(sale => {
-      const row = document.createElement(
-        "tr"
-      );
+      const row = document.createElement("tr");
 
       if (isVoided(sale)) {
-        row.classList.add(
-          "sale-voided-row"
-        );
+        row.classList.add("sale-voided-row");
       }
 
       const values = [
@@ -558,12 +529,8 @@ function renderSales() {
       ];
 
       values.forEach(value => {
-        const cell = document.createElement(
-          "td"
-        );
-
+        const cell = document.createElement("td");
         cell.textContent = value ?? "";
-
         row.appendChild(cell);
       });
 
@@ -574,27 +541,18 @@ function renderSales() {
         document.createElement("button");
 
       viewButton.type = "button";
-      viewButton.className =
-        "sale-view-btn";
-
+      viewButton.className = "sale-view-btn";
       viewButton.textContent = "View";
-
-      // Store the sale ID on the button.
-      // One shared event listener handles
-      // all View buttons.
       viewButton.dataset.saleId = sale.id;
 
-      actionsCell.appendChild(
-        viewButton
-      );
+      actionsCell.appendChild(viewButton);
 
       if (isVoided(sale)) {
-        const badge =
-          document.createElement("span");
+        const badge = document.createElement(
+          "span"
+        );
 
-        badge.className =
-          "sale-voided-badge";
-
+        badge.className = "sale-voided-badge";
         badge.textContent = "Voided";
 
         actionsCell.appendChild(badge);
@@ -605,13 +563,8 @@ function renderSales() {
     });
   }
 
-  // One DOM update for the entire table.
   salesTable.replaceChildren(fragment);
 }
-
-// =====================================
-// DELEGATED SALES TABLE EVENTS
-// =====================================
 
 salesTable.addEventListener(
   "click",
@@ -629,9 +582,7 @@ salesTable.addEventListener(
       return;
     }
 
-    showSaleDetails(
-      button.dataset.saleId
-    );
+    showSaleDetails(button.dataset.saleId);
   }
 );
 
@@ -672,7 +623,6 @@ async function recordSale(event) {
       "Please enter valid sale details.",
       "error"
     );
-
     return;
   }
 
@@ -702,15 +652,12 @@ async function recordSale(event) {
         "Enter valid supplier details.",
         "error"
       );
-
       return;
     }
   } else {
     productId = stockSelect.value;
 
-    const product = productById.get(
-      productId
-    );
+    const product = productById.get(productId);
 
     const quantityText = document
       .getElementById("stockQuantity")
@@ -729,15 +676,11 @@ async function recordSale(event) {
         "Not enough stock available for this sale.",
         "error"
       );
-
       return;
     }
 
     productName = product.name;
   }
-
-  // Customer details are matched or
-  // created inside PostgreSQL transaction.
 
   const customerName = document
     .getElementById("customerName")
@@ -750,10 +693,9 @@ async function recordSale(event) {
         .value.trim()
     );
 
-  const customerEmail = document
-    .getElementById("customerEmail")
-    .value.trim()
-    .toLowerCase();
+  const imei = document
+    .getElementById("saleImei")
+    .value.trim();
 
   const consent = document
     .getElementById(
@@ -761,21 +703,29 @@ async function recordSale(event) {
     )
     .checked;
 
+  // Customer name and phone must be
+  // provided together, or both left blank.
+  // IMEI does NOT affect this validation.
   if (
-    (customerName ||
-      customerPhone ||
-      customerEmail) &&
-    (
-      !customerName ||
-      (!customerPhone && !customerEmail)
-    )
+    (customerName || customerPhone) &&
+    (!customerName || !customerPhone)
   ) {
     setMessage(
-      "Enter a customer name and phone/email, " +
-      "or leave all customer details empty.",
+      "Enter both customer name and phone, " +
+      "or leave both blank.",
       "error"
     );
+    return;
+  }
 
+  if (
+    imei.length > 100 ||
+    /[\x00-\x1F\x7F]/.test(imei)
+  ) {
+    setMessage(
+      "Enter a valid IMEI or serial number.",
+      "error"
+    );
     return;
   }
 
@@ -785,10 +735,11 @@ async function recordSale(event) {
   setMessage("Recording sale...");
 
   try {
-    // Atomic database operation.
-    // Keep parameters unchanged.
+    // New RPC wraps the original atomic
+    // checkout function and stores IMEI
+    // within the same DB transaction.
     const { error } = await db.rpc(
-      "timidy_record_sale",
+      "timidy_record_sale_with_imei",
       {
         p_sale_id: saleId,
         p_type: saleType,
@@ -804,24 +755,26 @@ async function recordSale(event) {
         p_date: date,
         p_customer_name: customerName,
         p_customer_phone: customerPhone,
-        p_customer_email: customerEmail,
+        p_imei: imei || null,
         p_marketing_consent: consent,
         p_new_customer_id: createId(),
         p_history_id: createId()
       }
     );
 
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
 
-    // Sale is committed. Reset first
-    // to prevent accidental duplicates.
+    // The database transaction succeeded.
+    // Reset before attempting a refresh.
     form.reset();
 
     document.getElementById(
       "saleExpenses"
     ).value = 0;
+
+    document.getElementById(
+      "stockQuantity"
+    ).value = 1;
 
     document.getElementById(
       "saleDate"
@@ -872,13 +825,9 @@ function createSaleDetailsModal() {
     return saleDetailsModal;
   }
 
-  const modal = document.createElement(
-    "div"
-  );
+  const modal = document.createElement("div");
 
-  modal.className =
-    "sale-details-overlay";
-
+  modal.className = "sale-details-overlay";
   modal.hidden = true;
 
   modal.innerHTML = `
@@ -904,6 +853,14 @@ function createSaleDetailsModal() {
 
       <div class="sale-details-body">
         <div id="saleDetailsContent"></div>
+
+        <p
+          id="saleDetailsMessage"
+          class="sale-message"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        ></p>
 
         <button
           type="button"
@@ -948,9 +905,7 @@ function createSaleDetailsModal() {
     "click",
     () => {
       if (activeSaleId) {
-        downloadSaleReceipt(
-          activeSaleId
-        );
+        downloadSaleReceipt(activeSaleId);
       }
     }
   );
@@ -977,18 +932,13 @@ function addDetailRow(
   value,
   className = ""
 ) {
-  const row = document.createElement(
-    "div"
-  );
-
+  const row = document.createElement("div");
   row.className = "sale-detail-row";
 
   const labelElement =
     document.createElement("span");
 
-  labelElement.className =
-    "sale-detail-label";
-
+  labelElement.className = "sale-detail-label";
   labelElement.textContent = label;
 
   const valueElement =
@@ -1012,7 +962,7 @@ function showSaleDetails(saleId) {
   const sale = saleById.get(saleId);
 
   if (!sale) {
-    alert("Sale not found.");
+    setMessage("Sale not found.", "error");
     return;
   }
 
@@ -1026,6 +976,13 @@ function showSaleDetails(saleId) {
   );
 
   content.replaceChildren();
+
+  const detailsMessage =
+    modal.querySelector("#saleDetailsMessage");
+
+  detailsMessage.textContent = "";
+  detailsMessage.className = "sale-message";
+  detailsMessage.setAttribute("role", "status");
 
   addDetailRow(
     content,
@@ -1073,8 +1030,8 @@ function showSaleDetails(saleId) {
 
   addDetailRow(
     content,
-    "Email",
-    customer.email || "Not provided"
+    "IMEI / Serial Number",
+    sale.imei || "Not recorded"
   );
 
   addDetailRow(
@@ -1103,9 +1060,7 @@ function showSaleDetails(saleId) {
   const divider =
     document.createElement("hr");
 
-  divider.className =
-    "sale-details-divider";
-
+  divider.className = "sale-details-divider";
   content.appendChild(divider);
 
   addDetailRow(
@@ -1137,24 +1092,18 @@ function showSaleDetails(saleId) {
       : "sale-profit-positive"
   );
 
-  const receiptButton =
-    modal.querySelector(
-      "#downloadReceiptBtn"
-    );
+  const receiptButton = modal.querySelector(
+    "#downloadReceiptBtn"
+  );
 
-  const voidButton =
-    modal.querySelector(
-      "#voidSaleBtn"
-    );
+  const voidButton = modal.querySelector(
+    "#voidSaleBtn"
+  );
 
-  receiptButton.hidden =
-    isVoided(sale);
+  receiptButton.hidden = isVoided(sale);
+  voidButton.hidden = isVoided(sale);
 
-  voidButton.hidden =
-    isVoided(sale);
-
-  lastDetailsTrigger =
-    document.activeElement;
+  lastDetailsTrigger = document.activeElement;
 
   modal.hidden = false;
 
@@ -1211,13 +1160,14 @@ async function voidSale(saleId) {
   const sale = saleById.get(saleId);
 
   if (!sale) {
-    alert("Sale not found.");
+    setDetailsMessage("Sale not found.", "error");
     return;
   }
 
   if (isVoided(sale)) {
-    alert(
-      "This sale has already been voided."
+    setDetailsMessage(
+      "This sale has already been voided.",
+      "error"
     );
     return;
   }
@@ -1245,17 +1195,16 @@ async function voidSale(saleId) {
     !reason ||
     reason.length > 1000
   ) {
-    alert(
-      "A reason of 1–1000 characters is required."
+    setDetailsMessage(
+      "A reason of 1–1000 characters is required.",
+      "error"
     );
-
     return;
   }
 
   setBusy(true);
 
   try {
-    // Atomic database operation.
     const { error } = await db.rpc(
       "timidy_void_sale",
       {
@@ -1265,9 +1214,7 @@ async function voidSale(saleId) {
       }
     );
 
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
 
     closeSaleDetails();
 
@@ -1297,10 +1244,11 @@ async function voidSale(saleId) {
       error
     );
 
-    alert(
+    setDetailsMessage(
       "Void not confirmed: " +
       errorText(error) +
-      "\nCheck Supabase before retrying."
+      "\nCheck Supabase before retrying.",
+      "error"
     );
   } finally {
     setBusy(false);
@@ -1310,9 +1258,6 @@ async function voidSale(saleId) {
 // =====================================
 // PDF RECEIPT GENERATOR
 // =====================================
-
-// Cache the logo after its first load.
-let receiptLogoPromise = null;
 
 function loadReceiptLogo() {
   if (receiptLogoPromise) {
@@ -1326,15 +1271,10 @@ function loadReceiptLogo() {
       image.onload = () => {
         try {
           const canvas =
-            document.createElement(
-              "canvas"
-            );
+            document.createElement("canvas");
 
-          canvas.width =
-            image.naturalWidth;
-
-          canvas.height =
-            image.naturalHeight;
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
 
           const context =
             canvas.getContext("2d");
@@ -1344,16 +1284,10 @@ function loadReceiptLogo() {
             return;
           }
 
-          context.drawImage(
-            image,
-            0,
-            0
-          );
+          context.drawImage(image, 0, 0);
 
           resolve({
-            data: canvas.toDataURL(
-              "image/png"
-            ),
+            data: canvas.toDataURL("image/png"),
             width: image.naturalWidth,
             height: image.naturalHeight
           });
@@ -1362,12 +1296,9 @@ function loadReceiptLogo() {
         }
       };
 
-      image.onerror = () => {
-        resolve(null);
-      };
+      image.onerror = () => resolve(null);
 
-      image.src =
-        "images/company-logo.png";
+      image.src = "images/company-logo.png";
     }
   );
 
@@ -1383,13 +1314,14 @@ async function downloadSaleReceipt(saleId) {
   const sale = saleById.get(saleId);
 
   if (!sale) {
-    alert("Sale not found.");
+    setDetailsMessage("Sale not found.", "error");
     return;
   }
 
   if (isVoided(sale)) {
-    alert(
-      "Cannot generate a receipt for a voided sale."
+    setDetailsMessage(
+      "Cannot generate a receipt for a voided sale.",
+      "error"
     );
     return;
   }
@@ -1398,11 +1330,11 @@ async function downloadSaleReceipt(saleId) {
     typeof window.jspdf === "undefined" ||
     typeof window.jspdf.jsPDF !== "function"
   ) {
-    alert(
+    setDetailsMessage(
       "PDF library is unavailable. " +
-      "Check your internet connection and refresh."
+      "Check your internet connection and refresh.",
+      "error"
     );
-
     return;
   }
 
@@ -1422,18 +1354,14 @@ async function downloadSaleReceipt(saleId) {
     const pageWidth =
       pdf.internal.pageSize.getWidth();
 
+    const pageHeight =
+      pdf.internal.pageSize.getHeight();
+
     const margin = 14;
     const right = pageWidth - margin;
 
     pdf.setFillColor(22, 32, 52);
-
-    pdf.rect(
-      0,
-      0,
-      pageWidth,
-      45,
-      "F"
-    );
+    pdf.rect(0, 0, pageWidth, 45, "F");
 
     if (logo) {
       const ratio = Math.min(
@@ -1474,6 +1402,15 @@ async function downloadSaleReceipt(saleId) {
 
     let y = 58;
 
+    function ensureSpace(height = 12) {
+      if (y + height <= pageHeight - 15) {
+        return;
+      }
+
+      pdf.addPage();
+      y = 18;
+    }
+
     pdf.setTextColor(35, 45, 65);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
@@ -1487,36 +1424,30 @@ async function downloadSaleReceipt(saleId) {
     y += 9;
 
     function drawField(label, value) {
-      pdf.setFont(
-        "helvetica",
-        "normal"
-      );
-
+      pdf.setFont("helvetica", "normal");
       pdf.setFontSize(9);
-      pdf.setTextColor(
-        105,
-        115,
-        130
+
+      const labelWidth = 42;
+      const valueWidth =
+        pageWidth - margin * 2 - labelWidth;
+
+      const lines = pdf.splitTextToSize(
+        pdfSafeText(value),
+        valueWidth
       );
 
+      const height = Math.max(
+        8,
+        lines.length * 5
+      );
+
+      ensureSpace(height + 2);
+
+      pdf.setTextColor(105, 115, 130);
       pdf.text(label, margin, y);
 
-      pdf.setFont(
-        "helvetica",
-        "bold"
-      );
-
-      pdf.setTextColor(
-        35,
-        45,
-        65
-      );
-
-      const lines =
-        pdf.splitTextToSize(
-          pdfSafeText(value),
-          pageWidth - margin * 2 - 42
-        );
+      pdf.setFont("helvetica", "bold");
+      pdf.setTextColor(35, 45, 65);
 
       pdf.text(
         lines,
@@ -1525,69 +1456,28 @@ async function downloadSaleReceipt(saleId) {
         { align: "right" }
       );
 
-      y += Math.max(
-        8,
-        lines.length * 5
-      );
+      y += height;
     }
 
-    drawField(
-      "Receipt No.",
-      sale.id
-    );
-
-    drawField(
-      "Date",
-      sale.date
-    );
-
-    drawField(
-      "Customer",
-      customer.name
-    );
+    drawField("Receipt No.", sale.id);
+    drawField("Date", sale.date);
+    drawField("Customer", customer.name);
 
     if (customer.phone) {
-      drawField(
-        "Phone",
-        customer.phone
-      );
-    }
-
-    if (customer.email) {
-      drawField(
-        "Email",
-        customer.email
-      );
+      drawField("Phone", customer.phone);
     }
 
     y += 3;
+    ensureSpace(15);
 
-    pdf.setDrawColor(
-      220,
-      225,
-      232
-    );
-
-    pdf.line(
-      margin,
-      y,
-      right,
-      y
-    );
+    pdf.setDrawColor(220, 225, 232);
+    pdf.line(margin, y, right, y);
 
     y += 11;
 
-    pdf.setFont(
-      "helvetica",
-      "bold"
-    );
-
+    pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
-    pdf.setTextColor(
-      35,
-      45,
-      65
-    );
+    pdf.setTextColor(35, 45, 65);
 
     pdf.text(
       "PURCHASE DETAILS",
@@ -1597,15 +1487,8 @@ async function downloadSaleReceipt(saleId) {
 
     y += 10;
 
-    drawField(
-      "Product",
-      sale.productName
-    );
-
-    drawField(
-      "Quantity",
-      sale.quantity ?? 1
-    );
+    drawField("Product", sale.productName);
+    drawField("Quantity", sale.quantity ?? 1);
 
     drawField(
       "Sale Type",
@@ -1614,13 +1497,18 @@ async function downloadSaleReceipt(saleId) {
         : "Own Stock Sale"
     );
 
-    y += 5;
+    // IMEI is printed only when recorded.
+    if (sale.imei) {
+      drawField(
+        "IMEI / Serial No.",
+        sale.imei
+      );
+    }
 
-    pdf.setFillColor(
-      237,
-      242,
-      249
-    );
+    y += 5;
+    ensureSpace(40);
+
+    pdf.setFillColor(237, 242, 249);
 
     pdf.roundedRect(
       margin,
@@ -1632,17 +1520,9 @@ async function downloadSaleReceipt(saleId) {
       "F"
     );
 
-    pdf.setFont(
-      "helvetica",
-      "bold"
-    );
-
+    pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
-    pdf.setTextColor(
-      35,
-      45,
-      65
-    );
+    pdf.setTextColor(35, 45, 65);
 
     pdf.text(
       "TOTAL PAID",
@@ -1660,18 +1540,11 @@ async function downloadSaleReceipt(saleId) {
     );
 
     y += 34;
+    ensureSpace(20);
 
-    pdf.setFont(
-      "helvetica",
-      "normal"
-    );
-
+    pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
-    pdf.setTextColor(
-      100,
-      110,
-      125
-    );
+    pdf.setTextColor(100, 110, 125);
 
     pdf.text(
       "Thank you for shopping with Timidy Store!",
@@ -1689,18 +1562,12 @@ async function downloadSaleReceipt(saleId) {
       { align: "center" }
     );
 
-    const fileId = String(
-      sale.id
-    )
-      .replace(
-        /[^a-zA-Z0-9_-]/g,
-        ""
-      )
+    const fileId = String(sale.id)
+      .replace(/[^a-zA-Z0-9_-]/g, "")
       .slice(0, 36);
 
-    // IMPORTANT:
-    // Verify the sale remains active
-    // before saving the receipt.
+    // Verify the sale is still active
+    // immediately before downloading.
     const {
       data: latestSale,
       error: statusError
@@ -1715,18 +1582,16 @@ async function downloadSaleReceipt(saleId) {
       !latestSale ||
       isVoided(latestSale)
     ) {
-      alert(
+      setDetailsMessage(
         "Receipt cancelled because the sale " +
-        "is no longer active."
+        "is no longer active.",
+        "error"
       );
-
       return;
     }
 
     pdf.save(
-      `Timidy-Receipt-${
-        fileId || "Sale"
-      }.pdf`
+      `Timidy-Receipt-${fileId || "Sale"}.pdf`
     );
   } catch (error) {
     console.error(
@@ -1734,8 +1599,9 @@ async function downloadSaleReceipt(saleId) {
       error
     );
 
-    alert(
-      "Unable to generate receipt."
+    setDetailsMessage(
+      "Unable to generate receipt.",
+      "error"
     );
   }
 }
@@ -1751,16 +1617,12 @@ form.addEventListener(
 
 middlemanTab.addEventListener(
   "click",
-  () => {
-    changeSaleType("middleman");
-  }
+  () => changeSaleType("middleman")
 );
 
 stockTab.addEventListener(
   "click",
-  () => {
-    changeSaleType("stock");
-  }
+  () => changeSaleType("stock")
 );
 
 form.addEventListener(
@@ -1791,15 +1653,11 @@ async function initializeSales() {
       await window.TimidyAuth.getAuthorizedUser();
 
     if (!user) {
-      window.location.replace(
-        "login.html"
-      );
-
+      window.location.replace("login.html");
       return;
     }
 
     await refreshData();
-
     initialized = true;
   } catch (error) {
     console.error(
@@ -1823,10 +1681,6 @@ initializeSales();
 // RETURNING TO SALES TAB
 // =====================================
 
-// Avoid refreshing after every brief
-// browser-tab switch. Only reload if
-// the last successful fetch is old.
-
 document.addEventListener(
   "visibilitychange",
   async () => {
@@ -1841,28 +1695,19 @@ document.addEventListener(
     const age =
       Date.now() - lastDataRefresh;
 
-    if (
-      age < SALES_REFRESH_INTERVAL
-    ) {
+    if (age < SALES_REFRESH_INTERVAL) {
       return;
     }
 
     try {
-      // Re-check authorization before
-      // refreshing protected data.
       const user =
         await window.TimidyAuth.getAuthorizedUser();
 
       if (!user) {
-        window.location.replace(
-          "login.html"
-        );
-
+        window.location.replace("login.html");
         return;
       }
 
-      // A sale must not be submitted
-      // while its source data refreshes.
       if (busy) return;
 
       setBusy(true);

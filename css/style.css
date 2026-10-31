@@ -382,6 +382,15 @@ th {
   gap: 18px;
 }
 
+.product-form .sale-message {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.product-form .sale-message:empty {
+  display: none;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;

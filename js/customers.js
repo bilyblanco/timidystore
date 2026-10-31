@@ -3,7 +3,7 @@
 
 // ========================================
 // TIMIDY STORE — SUPABASE CUSTOMERS
-// Optimized loading, search and rendering
+// Phone-based customer management
 // ========================================
 
 const db = window.timidySupabase;
@@ -83,9 +83,8 @@ function normalizePhone(phone) {
 function mapCustomer(row) {
   return {
     id: row.id,
-    name: row.name,
+    name: row.name || "",
     phone: row.phone || "",
-    email: row.email || "",
     notes: row.notes || "",
     marketingConsent: Boolean(
       row.marketing_consent
@@ -120,8 +119,7 @@ function setMessage(text, type = "") {
   if (!message) return;
 
   message.textContent = text;
-  message.className =
-    "sale-message " + type;
+  message.className = "sale-message " + type;
 }
 
 function setBusy(value) {
@@ -156,32 +154,26 @@ function setBusy(value) {
 
 function findExisting(
   phone,
-  email,
   excludeId = null
 ) {
+  if (!phone) {
+    return null;
+  }
+
   return customers.find(customer => {
     if (customer.id === excludeId) {
       return false;
     }
 
-    const phoneMatches =
-      phone &&
-      normalizePhone(customer.phone) === phone;
-
-    const emailMatches =
-      email &&
-      customer.email.toLowerCase() === email;
-
-    return phoneMatches || emailMatches;
-  });
+    return (
+      normalizePhone(customer.phone) === phone
+    );
+  }) || null;
 }
 
 // ========================================
 // BUILD CUSTOMER PURCHASE INDEX
 // ========================================
-
-// Group active sales once rather than
-// scanning every sale for every customer.
 
 function buildCustomerIndexes() {
   customerById = new Map(
@@ -244,7 +236,6 @@ async function refreshCustomers() {
   }
 
   const request = (async () => {
-    // Load customers and sales concurrently.
     const [
       customersResult,
       salesResult
@@ -252,7 +243,7 @@ async function refreshCustomers() {
       db
         .from("customers")
         .select(
-          "id,name,phone,email,notes," +
+          "id,name,phone,notes," +
           "marketing_consent,consent_updated_at," +
           "created_at"
         )
@@ -279,7 +270,6 @@ async function refreshCustomers() {
       throw salesResult.error;
     }
 
-    // Commit both datasets together.
     customers = (
       customersResult.data || []
     ).map(mapCustomer);
@@ -393,8 +383,7 @@ function createActionButton(
   button.textContent = label;
 
   button.dataset.action = action;
-  button.dataset.customerId =
-    customerId;
+  button.dataset.customerId = customerId;
 
   button.disabled = busy;
 
@@ -417,8 +406,7 @@ function renderCustomers() {
     const matches =
       !term ||
       customer.name.toLowerCase().includes(term) ||
-      customer.phone.toLowerCase().includes(term) ||
-      customer.email.toLowerCase().includes(term);
+      customer.phone.toLowerCase().includes(term);
 
     if (!matches) {
       continue;
@@ -438,7 +426,6 @@ function renderCustomers() {
     [
       customer.name,
       customer.phone || "—",
-      customer.email || "—",
       stats.purchases,
       money(stats.spent)
     ].forEach(value => {
@@ -450,7 +437,6 @@ function renderCustomers() {
       row.appendChild(cell);
     });
 
-    // Marketing consent
     const consentCell =
       document.createElement("td");
 
@@ -473,7 +459,6 @@ function renderCustomers() {
     consentCell.appendChild(consent);
     row.appendChild(consentCell);
 
-    // Actions
     const actionsCell =
       document.createElement("td");
 
@@ -509,15 +494,14 @@ function renderCustomers() {
     const cell =
       document.createElement("td");
 
-    cell.colSpan = 7;
-    cell.textContent =
-      "No customers found.";
+    // Six columns after removing email.
+    cell.colSpan = 6;
+    cell.textContent = "No customers found.";
 
     row.appendChild(cell);
     fragment.appendChild(row);
   }
 
-  // One DOM update.
   table.replaceChildren(fragment);
 }
 
@@ -542,8 +526,7 @@ if (table) {
         return;
       }
 
-      const id =
-        button.dataset.customerId;
+      const id = button.dataset.customerId;
 
       if (button.dataset.action === "edit") {
         editCustomer(id);
@@ -575,9 +558,6 @@ function editCustomer(id) {
 
   field("customerPhone").value =
     customer.phone;
-
-  field("customerEmail").value =
-    customer.email;
 
   field("customerNotes").value =
     customer.notes;
@@ -623,8 +603,6 @@ function renderHistory(id) {
   const fragment =
     document.createDocumentFragment();
 
-  // Already grouped by customer.
-  // Sales retain the database date order.
   const purchases =
     purchasesByCustomer.get(id) || [];
 
@@ -636,7 +614,6 @@ function renderHistory(id) {
       document.createElement("td");
 
     cell.colSpan = 4;
-
     cell.textContent =
       "No purchases recorded yet.";
 
@@ -659,7 +636,6 @@ function renderHistory(id) {
           document.createElement("td");
 
         cell.textContent = value ?? "";
-
         row.appendChild(cell);
       });
 
@@ -667,9 +643,7 @@ function renderHistory(id) {
     }
   }
 
-  historyTable.replaceChildren(
-    fragment
-  );
+  historyTable.replaceChildren(fragment);
 }
 
 function showHistory(id) {
@@ -727,10 +701,6 @@ async function saveCustomer(event) {
     field("customerPhone").value.trim()
   );
 
-  const email = field(
-    "customerEmail"
-  ).value.trim().toLowerCase();
-
   const notes = field(
     "customerNotes"
   ).value.trim();
@@ -739,28 +709,25 @@ async function saveCustomer(event) {
     "marketingConsent"
   ).checked;
 
-  if (!name || (!phone && !email)) {
+  if (!name || !phone) {
     setMessage(
-      "Enter a name and at least a phone number or email.",
+      "Enter the customer's name and phone number.",
       "error"
     );
-
     return;
   }
 
   const existing = findExisting(
     phone,
-    email,
     editingId
   );
 
   if (existing) {
     setMessage(
-      "This phone or email already belongs to " +
+      "This phone number already belongs to " +
       existing.name + ".",
       "error"
     );
-
     return;
   }
 
@@ -768,21 +735,29 @@ async function saveCustomer(event) {
     ? customerById.get(editingId)
     : null;
 
-  const now =
-    new Date().toISOString();
+  if (editingId && !old) {
+    setMessage(
+      "Customer not found. Reload the page.",
+      "error"
+    );
+    return;
+  }
 
+  const now = new Date().toISOString();
+
+  // Intentionally omit email:
+  // - Existing customer email is preserved.
+  // - New customer email uses DB default
+  //   (normally NULL).
   const payload = {
     name,
     phone,
-    email,
     notes,
-    marketing_consent:
-      marketingConsent,
+    marketing_consent: marketingConsent,
 
     consent_updated_at:
       !old ||
-      old.marketingConsent !==
-        marketingConsent
+      old.marketingConsent !== marketingConsent
         ? now
         : old.consentUpdatedAt
   };
@@ -828,9 +803,6 @@ async function saveCustomer(event) {
 
     committed = true;
 
-    // Reset the form immediately after
-    // the write succeeds, even if the
-    // subsequent refresh fails.
     resetForm();
 
     await refreshCustomers();
@@ -902,8 +874,6 @@ if (closeHistory) {
   );
 }
 
-// Debounce search to avoid repeatedly
-// rebuilding the table while typing.
 if (search) {
   search.addEventListener(
     "input",
@@ -930,10 +900,7 @@ async function initializeCustomers() {
       await window.TimidyAuth.getAuthorizedUser();
 
     if (!user) {
-      window.location.replace(
-        "login.html"
-      );
-
+      window.location.replace("login.html");
       return;
     }
 
@@ -985,10 +952,7 @@ document.addEventListener(
         await window.TimidyAuth.getAuthorizedUser();
 
       if (!user) {
-        window.location.replace(
-          "login.html"
-        );
-
+        window.location.replace("login.html");
         return;
       }
 

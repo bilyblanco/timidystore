@@ -210,16 +210,21 @@
             </div>
           </div>
 
-          <form id="businessProfileForm">
+          <form
+            id="businessProfileForm"
+            autocomplete="off"
+          >
             <div class="settings-form-grid">
 
               <div class="settings-field">
                 <label for="businessName">Business Name</label>
                 <input
                   id="businessName"
+                  name="timidy_store_business_name"
                   type="text"
                   maxlength="100"
                   value="Timidy Store"
+                  autocomplete="off"
                   required
                 >
               </div>
@@ -228,9 +233,11 @@
                 <label for="businessOwner">Business Owner</label>
                 <input
                   id="businessOwner"
+                  name="timidy_store_business_owner"
                   type="text"
                   maxlength="100"
                   value="Allan"
+                  autocomplete="off"
                   required
                 >
               </div>
@@ -239,9 +246,11 @@
                 <label for="businessPhone">Business Phone</label>
                 <input
                   id="businessPhone"
+                  name="timidy_store_business_phone"
                   type="tel"
                   maxlength="30"
                   placeholder="+255..."
+                  autocomplete="off"
                 >
               </div>
 
@@ -249,9 +258,11 @@
                 <label for="businessEmail">Business Email</label>
                 <input
                   id="businessEmail"
+                  name="timidy_store_business_email"
                   type="email"
                   maxlength="150"
                   placeholder="store@example.com"
+                  autocomplete="off"
                 >
               </div>
 
@@ -259,15 +270,21 @@
                 <label for="businessLocation">Location</label>
                 <input
                   id="businessLocation"
+                  name="timidy_store_business_location"
                   type="text"
                   maxlength="150"
                   placeholder="City, Tanzania"
+                  autocomplete="off"
                 >
               </div>
 
               <div class="settings-field">
                 <label for="businessCurrency">Currency</label>
-                <select id="businessCurrency" disabled>
+                <select
+                  id="businessCurrency"
+                  autocomplete="off"
+                  disabled
+                >
                   <option value="TZS">
                     Tanzanian Shilling (TZS)
                   </option>
@@ -377,6 +394,7 @@
             </div>
           </div>
 
+          <!-- Password manager support remains enabled. -->
           <form id="changePasswordForm">
             <div class="settings-form-grid">
 
@@ -559,4 +577,5 @@
 
 </body>
 </html>
+
 

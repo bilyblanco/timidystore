@@ -78,15 +78,24 @@ function mapExpense(row) {
 function showError(error) {
   console.error("Reports error:", error);
 
+  setMessage(
+    "Unable to load report data: " +
+    (error?.message || "Unknown error."),
+    "error"
+  );
+}
+
+function setMessage(text, type = "") {
   const message = el("reportMessage");
 
-  if (message) {
-    message.textContent =
-      "Unable to load report data: " +
-      (error?.message || "Unknown error.");
+  if (!message) return;
 
-    message.setAttribute("role", "alert");
-  }
+  message.textContent = text;
+  message.className = "sale-message " + type;
+  message.setAttribute(
+    "role",
+    type === "error" ? "alert" : "status"
+  );
 }
 
 // =====================================
@@ -709,9 +718,10 @@ async function refreshReports(force = false) {
 
 async function downloadPDF() {
   if (!window.jspdf?.jsPDF) {
-    alert(
+    setMessage(
       "PDF library did not load. " +
-      "Check your connection."
+      "Check your connection.",
+      "error"
     );
     return;
   }
@@ -1055,9 +1065,10 @@ async function downloadPDF() {
   } catch (error) {
     console.error(error);
 
-    alert(
+    setMessage(
       "Could not generate PDF: " +
-      (error?.message || "Unknown error")
+      (error?.message || "Unknown error"),
+      "error"
     );
   } finally {
     loading = false;
@@ -1070,9 +1081,10 @@ async function downloadPDF() {
 
 async function downloadExcel() {
   if (!window.ExcelJS) {
-    alert(
+    setMessage(
       "ExcelJS library did not load. " +
-      "Check your connection."
+      "Check your connection.",
+      "error"
     );
     return;
   }
@@ -1522,9 +1534,10 @@ async function downloadExcel() {
   } catch (error) {
     console.error(error);
 
-    alert(
+    setMessage(
       "Could not generate Excel report: " +
-      (error?.message || "Unknown error")
+      (error?.message || "Unknown error"),
+      "error"
     );
   } finally {
     loading = false;
