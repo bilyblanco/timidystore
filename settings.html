@@ -24,7 +24,7 @@
   <script src="js/theme-init.js"></script>
 
   <link rel="stylesheet" href="css/style.css">
-  <link rel="stylesheet" href="css/settings.css">
+  <link rel="stylesheet" href="css/setings.css">
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 
@@ -183,25 +183,8 @@
 
         <div class="dashboard-greeting">
           <h1 class="greeting-title">Settings</h1>
-
-          <p class="greeting-subtitle">
-            Manage your business information, preferences,
-            and store data.
-          </p>
         </div>
 
-        <div class="header-actions">
-          <span class="demo-label">CLOUD CONNECTED</span>
-
-          <button
-            id="themeToggle"
-            class="theme-toggle"
-            type="button"
-            aria-label="Toggle dark mode"
-          >
-            🌙
-          </button>
-        </div>
       </header>
 
       <main class="content settings-content">
@@ -309,7 +292,6 @@
           </form>
         </section>
 
-        <!-- APPEARANCE -->
         <section class="dashboard-panel settings-panel">
           <div class="settings-section-heading">
             <div class="settings-section-icon">
@@ -318,45 +300,9 @@
 
             <div>
               <h2>Appearance</h2>
-              <p>Choose your preferred interface theme.</p>
+              <p>The interface follows your device's color scheme.</p>
             </div>
           </div>
-
-          <div class="settings-theme-options">
-            <label class="settings-theme-option">
-              <input
-                type="radio"
-                name="settingsTheme"
-                value="light"
-              >
-
-              <i data-lucide="sun"></i>
-
-              <span>
-                <strong>Light Mode</strong>
-                <small>Bright, clean appearance</small>
-              </span>
-            </label>
-
-            <label class="settings-theme-option">
-              <input
-                type="radio"
-                name="settingsTheme"
-                value="dark"
-              >
-
-              <i data-lucide="moon"></i>
-
-              <span>
-                <strong>Dark Mode</strong>
-                <small>Comfortable in low light</small>
-              </span>
-            </label>
-          </div>
-
-          <p class="settings-help">
-            Your theme preference is saved automatically.
-          </p>
         </section>
 
         <!-- DATA MANAGEMENT -->

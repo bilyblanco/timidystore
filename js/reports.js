@@ -1138,61 +1138,14 @@ function initializeYears(
       : String(currentQuarter);
 }
 
-// =====================================
-// THEME
-// =====================================
-
-const themeToggle = el("themeToggle");
-
-function applyTheme(theme) {
-  const dark = theme === "dark";
-
-  document.documentElement.classList.toggle(
-    "dark",
-    dark
-  );
-
-  document.body.classList.toggle(
-    "dark",
-    dark
-  );
-
-  if (themeToggle) {
-    themeToggle.textContent =
-      dark ? "☀️" : "🌙";
-  }
-}
-
-applyTheme(
-  localStorage.getItem("timidy-theme") === "dark"
-    ? "dark"
-    : "light"
-);
-
-if (themeToggle) {
-  themeToggle.addEventListener(
-    "click",
-    () => {
-      const next =
-        document.body.classList.contains(
-          "dark"
-        )
-          ? "light"
-          : "dark";
-
-      localStorage.setItem(
-        "timidy-theme",
-        next
-      );
-
-      applyTheme(next);
-
-      if (initialized) {
-        renderReport();
-      }
+window.addEventListener(
+  "timidy-theme-change",
+  () => {
+    if (initialized) {
+      renderReport();
     }
-  );
-}
+  }
+);
 
 // =====================================
 // EVENTS

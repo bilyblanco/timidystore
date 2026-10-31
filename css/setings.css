@@ -167,60 +167,6 @@
   border-color: rgba(79, 124, 255, 0.2);
 }
 
-/* APPEARANCE */
-
-.settings-theme-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.settings-theme-option {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 18px;
-  border: 1px solid #cbd5e1;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-}
-
-.settings-theme-option:hover {
-  border-color: #4f7cff;
-}
-
-.settings-theme-option:has(input:checked) {
-  border-color: #4f7cff;
-  background: rgba(79, 124, 255, 0.06);
-}
-
-.settings-theme-option input {
-  accent-color: #4f7cff;
-}
-
-.settings-theme-option > svg {
-  width: 22px;
-  height: 22px;
-  color: #4f7cff;
-  flex-shrink: 0;
-}
-
-.settings-theme-option span {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.settings-theme-option strong {
-  font-size: 14px;
-}
-
-.settings-theme-option small {
-  color: #64748b;
-  font-size: 12px;
-}
-
 .settings-help {
   margin: 15px 0 0;
   font-size: 12px;
@@ -313,7 +259,6 @@
 
 body.dark .settings-section-heading p,
 body.dark .settings-field small,
-body.dark .settings-theme-option small,
 body.dark .settings-help,
 body.dark .settings-data-card p,
 body.dark .settings-system-item span {
@@ -327,14 +272,8 @@ body.dark .settings-field select {
   color: #f1f5f9;
 }
 
-body.dark .settings-theme-option,
 body.dark .settings-data-card {
   border-color: #334155;
-}
-
-body.dark .settings-theme-option:has(input:checked) {
-  border-color: #4f7cff;
-  background: rgba(79, 124, 255, 0.1);
 }
 
 body.dark .settings-system-item {
@@ -379,7 +318,6 @@ body.dark .settings-warning {
   }
 
   .settings-form-grid,
-  .settings-theme-options,
   .settings-data-grid,
   .settings-system-grid {
     grid-template-columns: 1fr;

@@ -559,49 +559,6 @@ if (clearFilters) {
 }
 
 // ----------------------------------------
-// LIGHT / DARK MODE
-// ----------------------------------------
-
-const themeToggle = field("themeToggle");
-
-function applyTheme(theme) {
-  const dark = theme === "dark";
-
-  document.documentElement.classList.toggle(
-    "dark",
-    dark
-  );
-
-  document.body.classList.toggle(
-    "dark",
-    dark
-  );
-
-  if (themeToggle) {
-    themeToggle.textContent =
-      dark ? "☀️" : "🌙";
-  }
-}
-
-applyTheme(
-  localStorage.getItem("timidy-theme") === "dark"
-    ? "dark"
-    : "light"
-);
-
-if (themeToggle) {
-  themeToggle.addEventListener("click", () => {
-    const next =
-      document.body.classList.contains("dark")
-        ? "light"
-        : "dark";
-
-    localStorage.setItem("timidy-theme", next);
-    applyTheme(next);
-  });
-}
-
-// ----------------------------------------
 // INITIALIZATION
 // ----------------------------------------
 
@@ -637,4 +594,3 @@ initializeExpenses();
 if (typeof lucide !== "undefined") {
   lucide.createIcons();
 }
-

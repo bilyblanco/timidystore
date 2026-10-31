@@ -18,7 +18,6 @@ let busy = false;
 const form = document.getElementById("productForm");
 const table = document.getElementById("inventoryTable");
 const search = document.getElementById("searchProduct");
-const themeToggle = document.getElementById("themeToggle");
 
 // ----------------------------------------
 // UTILITIES
@@ -732,28 +731,6 @@ document.addEventListener("keydown", event => {
 });
 
 // ----------------------------------------
-// THEME
-// ----------------------------------------
-
-function applyTheme(theme) {
-  const isDark = theme === "dark";
-
-  document.documentElement.classList.toggle(
-    "dark",
-    isDark
-  );
-
-  document.body.classList.toggle(
-    "dark",
-    isDark
-  );
-
-  if (themeToggle) {
-    themeToggle.textContent = isDark ? "☀️" : "🌙";
-  }
-}
-
-// ----------------------------------------
 // INITIALIZATION
 // ----------------------------------------
 
@@ -763,24 +740,6 @@ if (form) {
 
 if (search) {
   search.addEventListener("input", renderProducts);
-}
-
-applyTheme(
-  localStorage.getItem("timidy-theme") === "dark"
-    ? "dark"
-    : "light"
-);
-
-if (themeToggle) {
-  themeToggle.addEventListener("click", () => {
-    const next =
-      document.body.classList.contains("dark")
-        ? "light"
-        : "dark";
-
-    localStorage.setItem("timidy-theme", next);
-    applyTheme(next);
-  });
 }
 
 async function initializeInventory() {
@@ -807,4 +766,3 @@ initializeInventory();
 if (typeof lucide !== "undefined") {
   lucide.createIcons();
 }
-

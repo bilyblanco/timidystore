@@ -188,76 +188,6 @@ async function saveBusinessProfile(event) {
 }
 
 // =====================================
-// APPEARANCE
-// =====================================
-
-function settingsApplyTheme(theme) {
-  const dark = theme === "dark";
-
-  document.documentElement.classList.toggle(
-    "dark",
-    dark
-  );
-
-  document.body.classList.toggle(
-    "dark",
-    dark
-  );
-
-  const toggle = settingsEl("themeToggle");
-
-  if (toggle) {
-    toggle.textContent = dark ? "☀️" : "🌙";
-  }
-
-  document.querySelectorAll(
-    'input[name="settingsTheme"]'
-  ).forEach(input => {
-    input.checked = input.value === theme;
-  });
-}
-
-function settingsSaveTheme(theme) {
-  localStorage.setItem(
-    "timidy-theme",
-    theme
-  );
-
-  settingsApplyTheme(theme);
-}
-
-function initializeSettingsTheme() {
-  const theme =
-    localStorage.getItem("timidy-theme") === "dark"
-      ? "dark"
-      : "light";
-
-  settingsApplyTheme(theme);
-
-  settingsEl("themeToggle")?.addEventListener(
-    "click",
-    () => {
-      const next =
-        document.body.classList.contains("dark")
-          ? "light"
-          : "dark";
-
-      settingsSaveTheme(next);
-    }
-  );
-
-  document.querySelectorAll(
-    'input[name="settingsTheme"]'
-  ).forEach(input => {
-    input.addEventListener("change", () => {
-      if (input.checked) {
-        settingsSaveTheme(input.value);
-      }
-    });
-  });
-}
-
-// =====================================
 // DATABASE PAGINATION
 // =====================================
 
@@ -490,11 +420,7 @@ async function downloadSettingsBackup() {
       },
 
       settings: {
-        profile: profileResult.data,
-        theme:
-          localStorage.getItem("timidy-theme") === "dark"
-            ? "dark"
-            : "light"
+        profile: profileResult.data
       }
     };
 
@@ -653,8 +579,6 @@ async function logoutSettingsAdmin() {
 // =====================================
 
 async function initializeSettings() {
-  initializeSettingsTheme();
-
   settingsEl("businessProfileForm")
     .addEventListener(
       "submit",
@@ -725,4 +649,3 @@ if (document.readyState === "loading") {
 } else {
   initializeSettings();
 }
-

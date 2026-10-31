@@ -12,7 +12,6 @@ if (!db) {
 }
 
 const form = document.getElementById("saleForm");
-const themeToggle = document.getElementById("themeToggle");
 const middlemanTab = document.getElementById("middlemanTab");
 const stockTab = document.getElementById("stockTab");
 const stockSelect = document.getElementById("stockProduct");
@@ -1336,25 +1335,6 @@ async function downloadSaleReceipt(saleId) {
 // LIGHT / DARK MODE
 // =====================================
 
-function applyTheme(theme) {
-  const dark = theme === "dark";
-
-  document.documentElement.classList.toggle(
-    "dark",
-    dark
-  );
-
-  document.body.classList.toggle(
-    "dark",
-    dark
-  );
-
-  if (themeToggle) {
-    themeToggle.textContent =
-      dark ? "☀️" : "🌙";
-  }
-}
-
 // =====================================
 // INITIALIZATION
 // =====================================
@@ -1381,28 +1361,6 @@ form.addEventListener(
   "change",
   updateProfitPreview
 );
-
-applyTheme(
-  localStorage.getItem("timidy-theme") === "dark"
-    ? "dark"
-    : "light"
-);
-
-if (themeToggle) {
-  themeToggle.addEventListener("click", () => {
-    const next =
-      document.body.classList.contains("dark")
-        ? "light"
-        : "dark";
-
-    localStorage.setItem(
-      "timidy-theme",
-      next
-    );
-
-    applyTheme(next);
-  });
-}
 
 document.getElementById("saleDate").value =
   getLocalDate();
@@ -1443,4 +1401,3 @@ initializeSales();
 if (typeof lucide !== "undefined") {
   lucide.createIcons();
 }
-
