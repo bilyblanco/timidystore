@@ -4,6 +4,14 @@
 // ========================================
 // TIMIDY STORE — SUPABASE INVENTORY
 // Optimized loading, search and rendering
+//
+// DELETE BEHAVIOR:
+// Edit -> clear ALL four editable fields
+// -> press OK on every prompt
+// -> confirm permanent deletion.
+//
+// Deletion requires a secure Supabase RPC:
+// public.timidy_delete_product(p_product_id)
 // ========================================
 
 const db = window.timidySupabase;
@@ -59,11 +67,11 @@ const formatMoney = amount =>
     { maximumFractionDigits: 2 }
   );
 
-function showError(message, error) {
-  console.error(message, error);
+function showError(errorMessage, error) {
+  console.error(errorMessage, error);
 
   showMessage(
-    `${message}\n` +
+    `${errorMessage}\n` +
     (error?.message || "Please try again."),
     "error"
   );
@@ -206,8 +214,8 @@ async function loadProductHistory(productId) {
     .from("stock_history")
     .select(
       "id,product_id,product_name,type," +
-      "quantity,previous_quantity,new_quantity," +
-      "unit_cost,note,date"
+        "quantity,previous_quantity,new_quantity," +
+        "unit_cost,note,date"
     )
     .eq("product_id", productId)
     .order("date", {
@@ -627,6 +635,71 @@ async function addProduct(event) {
 }
 
 // ========================================
+// DELETE PRODUCT
+// ========================================
+
+// Called only when ALL four editable
+// fields are blank during Edit.
+//
+// The database RPC must:
+// - Verify administrator authorization.
+// - Block deletion when sales exist.
+// - Handle stock_history safely.
+// - Delete the product atomically.
+
+async function deleteProduct(productId) {
+  if (busy) return;
+
+  const product =
+    productById.get(productId);
+
+  if (!product) return;
+
+  const confirmed = confirm(
+    `Delete "${product.name}" permanently?\n\n` +
+    "This action cannot be undone.\n\n" +
+    "Products linked to sales must not " +
+    "be deleted."
+  );
+
+  if (!confirmed) return;
+
+  setBusy(true);
+
+  let committed = false;
+
+  try {
+    const { error } = await db.rpc(
+      "timidy_delete_product",
+      {
+        p_product_id: productId
+      }
+    );
+
+    if (error) throw error;
+
+    committed = true;
+
+    await loadProducts();
+
+    showMessage(
+      `"${product.name}" deleted successfully!`,
+      "success"
+    );
+  } catch (error) {
+    showError(
+      committed
+        ? "Product was deleted, but inventory " +
+          "refresh failed. Reload the page."
+        : "Unable to delete product.",
+      error
+    );
+  } finally {
+    setBusy(false);
+  }
+}
+
+// ========================================
 // EDIT PRODUCT
 // ========================================
 
@@ -668,6 +741,19 @@ async function openEditProduct(productId) {
 
   const name = nameInput.trim();
   const category = categoryInput.trim();
+
+  // Detect deletion BEFORE converting
+  // empty numeric strings to Number(0).
+  const allFieldsEmpty =
+    name === "" &&
+    category === "" &&
+    priceInput.trim() === "" &&
+    minimumInput.trim() === "";
+
+  if (allFieldsEmpty) {
+    await deleteProduct(productId);
+    return;
+  }
 
   const sellingPrice =
     Number(priceInput);
@@ -1262,3 +1348,4 @@ document.addEventListener(
 if (typeof lucide !== "undefined") {
   lucide.createIcons();
 }
+
