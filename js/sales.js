@@ -1,10 +1,15 @@
 
 "use strict";
 
-const INVENTORY_KEY = "timidy-inventory";
-const SALES_KEY = "timidy-sales";
-const CUSTOMERS_KEY = "timidy-customers";
-const HISTORY_KEY = "timidy-stock-history";
+// =====================================
+// TIMIDY STORE — SUPABASE SALES
+// =====================================
+
+const db = window.timidySupabase;
+
+if (!db) {
+  throw new Error("Supabase is not configured.");
+}
 
 const form = document.getElementById("saleForm");
 const themeToggle = document.getElementById("themeToggle");
@@ -15,8 +20,10 @@ const salesTable = document.getElementById("salesTable");
 const message = document.getElementById("saleMessage");
 
 let saleType = "middleman";
-let products = loadArray(INVENTORY_KEY);
-let sales = loadArray(SALES_KEY);
+let products = [];
+let sales = [];
+let customers = [];
+let busy = false;
 
 let saleDetailsModal = null;
 let lastDetailsTrigger = null;
@@ -26,20 +33,8 @@ let activeSaleId = null;
 // HELPERS
 // =====================================
 
-function loadArray(key) {
-  try {
-    const data = JSON.parse(localStorage.getItem(key));
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-
 function createId() {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
+  if (crypto?.randomUUID) {
     return crypto.randomUUID();
   }
 
@@ -64,6 +59,10 @@ function setMessage(text, type = "") {
   message.className = "sale-message " + type;
 }
 
+function errorText(error) {
+  return error?.message || "Please try again.";
+}
+
 function getLocalDate() {
   const now = new Date();
 
@@ -72,6 +71,19 @@ function getLocalDate() {
   const day = String(now.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function validDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const date = new Date(value + "T00:00:00Z");
+
+  return (
+    !Number.isNaN(date.getTime()) &&
+    date.toISOString().slice(0, 10) === value
+  );
 }
 
 function normalizeCustomerPhone(phone) {
@@ -90,126 +102,116 @@ function isVoided(sale) {
   return sale.status === "voided" || sale.voided === true;
 }
 
-function saveChanges(changes) {
-  const previous = changes.map(([key]) => [
-    key,
-    localStorage.getItem(key)
+function mapProduct(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    quantity: Number(row.quantity),
+    purchasePrice: Number(row.purchase_price)
+  };
+}
+
+function mapSale(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    status: row.status,
+    customerId: row.customer_id,
+    productId: row.product_id,
+    productName: row.product_name,
+    quantity: Number(row.quantity),
+    amount: Number(row.amount),
+    cost: Number(row.cost),
+    expenses: Number(row.expenses),
+    profit: Number(row.profit),
+    date: row.date,
+    customer: row.customer || "",
+    customerPhone: row.customer_phone || "",
+    customerEmail: row.customer_email || "",
+    voided: row.voided,
+    voidedAt: row.voided_at,
+    voidReason: row.void_reason
+  };
+}
+
+function setBusy(value) {
+  busy = value;
+
+  form.querySelectorAll(
+    "input, select, button, textarea"
+  ).forEach(element => {
+    element.disabled = value;
+  });
+
+  middlemanTab.disabled = value;
+  stockTab.disabled = value;
+
+  salesTable.querySelectorAll("button").forEach(button => {
+    button.disabled = value;
+  });
+
+  if (saleDetailsModal) {
+    saleDetailsModal.querySelectorAll("button")
+      .forEach(button => {
+        button.disabled = value;
+      });
+  }
+}
+
+// =====================================
+// LOAD DATA FROM SUPABASE
+// =====================================
+
+async function refreshData() {
+  const [
+    inventoryResult,
+    salesResult,
+    customersResult
+  ] = await Promise.all([
+    db
+      .from("inventory")
+      .select("id,name,quantity,purchase_price")
+      .order("name", { ascending: true }),
+
+    db
+      .from("sales")
+      .select(
+        "id,type,status,customer_id,product_id," +
+        "product_name,quantity,amount,cost,expenses," +
+        "profit,date,customer,customer_phone," +
+        "customer_email,voided,voided_at,void_reason"
+      )
+      .order("date", { ascending: false }),
+
+    db
+      .from("customers")
+      .select("id,name,phone,email")
   ]);
 
-  try {
-    for (const [key, value] of changes) {
-      localStorage.setItem(key, value);
+  for (const result of [
+    inventoryResult,
+    salesResult,
+    customersResult
+  ]) {
+    if (result.error) {
+      throw result.error;
     }
-  } catch (error) {
-    for (const [key, value] of previous) {
-      try {
-        if (value === null) {
-          localStorage.removeItem(key);
-        } else {
-          localStorage.setItem(key, value);
-        }
-      } catch {
-        // Browser storage may remain inconsistent.
-      }
-    }
-
-    throw error;
   }
+
+  products = (inventoryResult.data || []).map(mapProduct);
+  sales = (salesResult.data || []).map(mapSale);
+  customers = customersResult.data || [];
+
+  renderStockOptions();
+  renderSales();
+  updateProfitPreview();
 }
 
 // =====================================
 // CUSTOMER INTEGRATION
 // =====================================
 
-function prepareSaleCustomer() {
-  const name = document
-    .getElementById("customerName")
-    .value.trim();
-
-  const phone = normalizeCustomerPhone(
-    document.getElementById("customerPhone").value.trim()
-  );
-
-  const email = document
-    .getElementById("customerEmail")
-    .value.trim()
-    .toLowerCase();
-
-  const consent = document
-    .getElementById("customerMarketingConsent")
-    .checked;
-
-  if (!name && !phone && !email) {
-    return {
-      customerId: null,
-      customers: null
-    };
-  }
-
-  if (!name || (!phone && !email)) {
-    throw new Error(
-      "Enter a customer name and phone or email, " +
-      "or leave all customer details empty."
-    );
-  }
-
-  const customers = loadArray(CUSTOMERS_KEY);
-
-  const phoneMatch = phone
-    ? customers.find(customer =>
-        normalizeCustomerPhone(customer.phone) === phone
-      )
-    : null;
-
-  const emailMatch = email
-    ? customers.find(customer =>
-        String(customer.email || "").toLowerCase() === email
-      )
-    : null;
-
-  if (
-    phoneMatch &&
-    emailMatch &&
-    phoneMatch.id !== emailMatch.id
-  ) {
-    throw new Error(
-      "Phone and email belong to different customers."
-    );
-  }
-
-  const existing = phoneMatch || emailMatch;
-
-  if (existing) {
-    return {
-      customerId: existing.id,
-      customers: null
-    };
-  }
-
-  const customer = {
-    id: createId(),
-    name,
-    phone,
-    email,
-    notes: "",
-    marketingConsent: consent,
-    consentUpdatedAt: consent
-      ? new Date().toISOString()
-      : null,
-    createdAt: new Date().toISOString()
-  };
-
-  customers.push(customer);
-
-  return {
-    customerId: customer.id,
-    customers
-  };
-}
-
 function getSaleCustomer(sale) {
-  const customers = loadArray(CUSTOMERS_KEY);
-
   const customer = customers.find(
     item => item.id === sale.customerId
   );
@@ -237,6 +239,8 @@ function getSaleCustomer(sale) {
 // =====================================
 
 function changeSaleType(type) {
+  if (busy) return;
+
   saleType = type;
 
   middlemanTab.classList.toggle(
@@ -275,15 +279,16 @@ function changeSaleType(type) {
 // =====================================
 
 function renderStockOptions() {
-  products = loadArray(INVENTORY_KEY);
-
   const selectedProduct = stockSelect.value;
 
   stockSelect.replaceChildren();
-  stockSelect.add(new Option("Select available stock", ""));
+
+  stockSelect.add(
+    new Option("Select available stock", "")
+  );
 
   products
-    .filter(product => Number(product.quantity) > 0)
+    .filter(product => product.quantity > 0)
     .forEach(product => {
       stockSelect.add(
         new Option(
@@ -293,11 +298,10 @@ function renderStockOptions() {
       );
     });
 
-  if (
-    [...stockSelect.options].some(
-      option => option.value === selectedProduct
-    )
-  ) {
+  const stillAvailable = [...stockSelect.options]
+    .some(option => option.value === selectedProduct);
+
+  if (stillAvailable) {
     stockSelect.value = selectedProduct;
   }
 }
@@ -322,7 +326,7 @@ function calculateProfit() {
     if (!product) return 0;
 
     cost =
-      Number(product.purchasePrice) *
+      product.purchasePrice *
       numberFrom("stockQuantity");
   }
 
@@ -331,7 +335,10 @@ function calculateProfit() {
 
 function updateProfitPreview() {
   const profit = calculateProfit();
-  const preview = document.getElementById("profitPreview");
+
+  const preview = document.getElementById(
+    "profitPreview"
+  );
 
   preview.textContent = money(profit);
   preview.classList.toggle("negative", profit < 0);
@@ -342,7 +349,6 @@ function updateProfitPreview() {
 // =====================================
 
 function renderSales() {
-  sales = loadArray(SALES_KEY);
   salesTable.replaceChildren();
 
   let revenue = 0;
@@ -352,12 +358,12 @@ function renderSales() {
   sales.forEach(sale => {
     if (isVoided(sale)) return;
 
-    revenue += Number(sale.amount) || 0;
+    revenue += sale.amount;
 
     if (sale.type === "middleman") {
-      middlemanProfit += Number(sale.profit) || 0;
+      middlemanProfit += sale.profit;
     } else {
-      stockProfit += Number(sale.profit) || 0;
+      stockProfit += sale.profit;
     }
   });
 
@@ -386,6 +392,7 @@ function renderSales() {
     cell.textContent = "No sales recorded yet.";
     cell.style.textAlign = "center";
     cell.style.padding = "24px";
+
     return;
   }
 
@@ -423,8 +430,10 @@ function renderSales() {
 
     if (isVoided(sale)) {
       const badge = document.createElement("span");
+
       badge.className = "sale-voided-badge";
       badge.textContent = "Voided";
+
       actionsCell.appendChild(badge);
     }
   });
@@ -434,60 +443,86 @@ function renderSales() {
 // RECORD NEW SALE
 // =====================================
 
-function recordSale(event) {
+async function recordSale(event) {
   event.preventDefault();
 
-  products = loadArray(INVENTORY_KEY);
-  sales = loadArray(SALES_KEY);
+  if (busy) return;
 
-  const amount = numberFrom("saleAmount");
-  const expenses = numberFrom("saleExpenses");
+  const amountText = document
+    .getElementById("saleAmount")
+    .value.trim();
+
+  const expensesText = document
+    .getElementById("saleExpenses")
+    .value.trim();
+
+  const amount = Number(amountText);
+  const expenses = Number(expensesText);
   const date = document.getElementById("saleDate").value;
 
   if (
+    !amountText ||
+    !expensesText ||
     !Number.isSafeInteger(amount) ||
     amount < 0 ||
     !Number.isSafeInteger(expenses) ||
     expenses < 0 ||
-    !date
+    !validDate(date)
   ) {
-    setMessage("Please enter valid sale details.", "error");
+    setMessage(
+      "Please enter valid sale details.",
+      "error"
+    );
     return;
   }
 
-  let productName;
-  let cost;
   let productId = null;
+  let productName = "";
   let quantity = 1;
-  let product = null;
+  let supplierCost = 0;
 
   if (saleType === "middleman") {
     productName = document
       .getElementById("middlemanProduct")
       .value.trim();
 
-    cost = numberFrom("supplierCost");
+    const costText = document
+      .getElementById("supplierCost")
+      .value.trim();
+
+    supplierCost = Number(costText);
 
     if (
       !productName ||
-      !Number.isSafeInteger(cost) ||
-      cost < 0
+      !costText ||
+      !Number.isSafeInteger(supplierCost) ||
+      supplierCost < 0
     ) {
-      setMessage("Enter valid supplier details.", "error");
+      setMessage(
+        "Enter valid supplier details.",
+        "error"
+      );
       return;
     }
   } else {
-    product = products.find(
-      item => item.id === stockSelect.value
+    productId = stockSelect.value;
+
+    const product = products.find(
+      item => item.id === productId
     );
 
-    quantity = numberFrom("stockQuantity");
+    const quantityText = document
+      .getElementById("stockQuantity")
+      .value.trim();
+
+    quantity = Number(quantityText);
 
     if (
       !product ||
+      !quantityText ||
       !Number.isSafeInteger(quantity) ||
       quantity < 1 ||
-      quantity > Number(product.quantity)
+      quantity > product.quantity
     ) {
       setMessage(
         "Not enough stock available for this sale.",
@@ -497,18 +532,10 @@ function recordSale(event) {
     }
 
     productName = product.name;
-    productId = product.id;
-    cost = Number(product.purchasePrice) * quantity;
   }
 
-  let customerResult;
-
-  try {
-    customerResult = prepareSaleCustomer();
-  } catch (error) {
-    setMessage(error.message, "error");
-    return;
-  }
+  // Customer details are matched or created
+  // inside the PostgreSQL transaction.
 
   const customerName = document
     .getElementById("customerName")
@@ -523,96 +550,98 @@ function recordSale(event) {
     .value.trim()
     .toLowerCase();
 
-  const sale = {
-    id: createId(),
-    type: saleType,
-    status: "active",
-    customerId: customerResult.customerId,
-    productId,
-    productName,
-    quantity,
-    amount,
-    cost,
-    expenses,
-    profit: amount - cost - expenses,
-    date,
-    customer: customerName,
-    customerPhone,
-    customerEmail
-  };
+  const consent = document
+    .getElementById("customerMarketingConsent")
+    .checked;
 
-  const changes = [];
-
-  if (product) {
-    const previousQuantity = Number(product.quantity);
-    const newQuantity = previousQuantity - quantity;
-
-    product.quantity = newQuantity;
-
-    changes.push([
-      INVENTORY_KEY,
-      JSON.stringify(products)
-    ]);
-
-    const history = loadArray(HISTORY_KEY);
-
-    history.unshift({
-      id: createId(),
-      productId: product.id,
-      productName: product.name,
-      type: "Sale",
-      quantity: -quantity,
-      previousQuantity,
-      newQuantity,
-      unitCost: Number(product.purchasePrice),
-      note: `Own-stock sale (${sale.id})`,
-      saleId: sale.id,
-      date: new Date().toISOString()
-    });
-
-    changes.push([
-      HISTORY_KEY,
-      JSON.stringify(history)
-    ]);
-  }
-
-  sales.push(sale);
-
-  changes.push([
-    SALES_KEY,
-    JSON.stringify(sales)
-  ]);
-
-  if (customerResult.customers) {
-    changes.push([
-      CUSTOMERS_KEY,
-      JSON.stringify(customerResult.customers)
-    ]);
-  }
-
-  try {
-    saveChanges(changes);
-  } catch {
-    products = loadArray(INVENTORY_KEY);
-    sales = loadArray(SALES_KEY);
-
+  if (
+    (customerName || customerPhone || customerEmail) &&
+    (!customerName || (!customerPhone && !customerEmail))
+  ) {
     setMessage(
-      "Saving failed. Check existing records before retrying.",
+      "Enter a customer name and phone/email, " +
+      "or leave all customer details empty.",
       "error"
     );
     return;
   }
 
-  form.reset();
+  const saleId = createId();
 
-  document.getElementById("saleExpenses").value = 0;
-  document.getElementById("saleDate").value = getLocalDate();
+  setBusy(true);
+  setMessage("Recording sale...");
 
-  renderStockOptions();
-  renderSales();
-  updateProfitPreview();
+  try {
+    const { error } = await db.rpc(
+      "timidy_record_sale",
+      {
+        p_sale_id: saleId,
+        p_type: saleType,
+        p_product_id: productId,
+        p_product_name: productName,
+        p_quantity: quantity,
+        p_amount: amount,
+        p_supplier_cost:
+          saleType === "middleman"
+            ? supplierCost
+            : null,
+        p_expenses: expenses,
+        p_date: date,
+        p_customer_name: customerName,
+        p_customer_phone: customerPhone,
+        p_customer_email: customerEmail,
+        p_marketing_consent: consent,
+        p_new_customer_id: createId(),
+        p_history_id: createId()
+      }
+    );
 
-  setMessage("Sale recorded successfully!", "success");
+    if (error) {
+      throw error;
+    }
+
+    // The sale has been committed.
+    // Reset the form before refreshing so that
+    // a refresh failure does not encourage
+    // accidental duplicate submissions.
+
+    form.reset();
+
+    document.getElementById("saleExpenses").value = 0;
+    document.getElementById("saleDate").value =
+      getLocalDate();
+
+    try {
+      await refreshData();
+
+      setMessage(
+        "Sale recorded successfully!",
+        "success"
+      );
+    } catch (refreshError) {
+      console.error(
+        "Sale saved, but refresh failed:",
+        refreshError
+      );
+
+      setMessage(
+        "Sale saved in Supabase, but refreshing failed. " +
+        "Reload before recording another sale.",
+        "error"
+      );
+    }
+  } catch (error) {
+    console.error("Unable to record sale:", error);
+
+    setMessage(
+      "Sale not confirmed: " +
+      errorText(error) +
+      " Check Supabase records before retrying.",
+      "error"
+    );
+  } finally {
+    setBusy(false);
+  }
 }
 
 // =====================================
@@ -620,7 +649,9 @@ function recordSale(event) {
 // =====================================
 
 function createSaleDetailsModal() {
-  if (saleDetailsModal) return saleDetailsModal;
+  if (saleDetailsModal) {
+    return saleDetailsModal;
+  }
 
   const modal = document.createElement("div");
 
@@ -696,10 +727,16 @@ function createSaleDetailsModal() {
     });
 
   saleDetailsModal = modal;
+
   return modal;
 }
 
-function addDetailRow(container, label, value, className = "") {
+function addDetailRow(
+  container,
+  label,
+  value,
+  className = ""
+) {
   const row = document.createElement("div");
   row.className = "sale-detail-row";
 
@@ -710,6 +747,7 @@ function addDetailRow(container, label, value, className = "") {
   const valueElement = document.createElement("strong");
   valueElement.className =
     "sale-detail-value " + className;
+
   valueElement.textContent = String(value ?? "—");
 
   row.append(labelElement, valueElement);
@@ -717,7 +755,7 @@ function addDetailRow(container, label, value, className = "") {
 }
 
 function showSaleDetails(saleId) {
-  const sale = loadArray(SALES_KEY).find(
+  const sale = sales.find(
     item => item.id === saleId
   );
 
@@ -730,7 +768,10 @@ function showSaleDetails(saleId) {
 
   const customer = getSaleCustomer(sale);
   const modal = createSaleDetailsModal();
-  const content = modal.querySelector("#saleDetailsContent");
+
+  const content = modal.querySelector(
+    "#saleDetailsContent"
+  );
 
   content.replaceChildren();
 
@@ -746,8 +787,17 @@ function showSaleDetails(saleId) {
       : "Own Stock Sale"
   );
 
-  addDetailRow(content, "Quantity", sale.quantity ?? 1);
-  addDetailRow(content, "Customer", customer.name);
+  addDetailRow(
+    content,
+    "Quantity",
+    sale.quantity ?? 1
+  );
+
+  addDetailRow(
+    content,
+    "Customer",
+    customer.name
+  );
 
   addDetailRow(
     content,
@@ -786,9 +836,14 @@ function showSaleDetails(saleId) {
 
   const divider = document.createElement("hr");
   divider.className = "sale-details-divider";
+
   content.appendChild(divider);
 
-  addDetailRow(content, "Selling Amount", money(sale.amount));
+  addDetailRow(
+    content,
+    "Selling Amount",
+    money(sale.amount)
+  );
 
   addDetailRow(
     content,
@@ -808,7 +863,7 @@ function showSaleDetails(saleId) {
     content,
     "Transaction Profit",
     money(sale.profit),
-    Number(sale.profit) < 0
+    sale.profit < 0
       ? "sale-profit-negative"
       : "sale-profit-positive"
   );
@@ -827,18 +882,30 @@ function showSaleDetails(saleId) {
   lastDetailsTrigger = document.activeElement;
 
   modal.hidden = false;
-  document.body.classList.add("sale-details-open");
 
-  modal.querySelector(".sale-details-close").focus();
+  document.body.classList.add(
+    "sale-details-open"
+  );
+
+  modal.querySelector(
+    ".sale-details-close"
+  ).focus();
 }
 
 function closeSaleDetails() {
-  if (!saleDetailsModal || saleDetailsModal.hidden) return;
+  if (
+    !saleDetailsModal ||
+    saleDetailsModal.hidden
+  ) {
+    return;
+  }
 
   saleDetailsModal.hidden = true;
   activeSaleId = null;
 
-  document.body.classList.remove("sale-details-open");
+  document.body.classList.remove(
+    "sale-details-open"
+  );
 
   if (lastDetailsTrigger?.focus) {
     lastDetailsTrigger.focus();
@@ -849,7 +916,8 @@ document.addEventListener("keydown", event => {
   if (
     event.key === "Escape" &&
     saleDetailsModal &&
-    !saleDetailsModal.hidden
+    !saleDetailsModal.hidden &&
+    !busy
   ) {
     closeSaleDetails();
   }
@@ -859,9 +927,10 @@ document.addEventListener("keydown", event => {
 // VOID SALE
 // =====================================
 
-function voidSale(saleId) {
-  const currentSales = loadArray(SALES_KEY);
-  const sale = currentSales.find(
+async function voidSale(saleId) {
+  if (busy) return;
+
+  const sale = sales.find(
     item => item.id === saleId
   );
 
@@ -879,8 +948,8 @@ function voidSale(saleId) {
     "VOID THIS SALE?\n\n" +
     `Product: ${sale.productName}\n` +
     `Amount: ${money(sale.amount)}\n\n` +
-    "This will exclude the transaction from sales totals.\n" +
-    "For own-stock sales, the quantity will be restored.\n\n" +
+    "This excludes the transaction from sales totals.\n" +
+    "For own-stock sales, inventory will be restored.\n\n" +
     "Continue?"
   );
 
@@ -894,114 +963,65 @@ function voidSale(saleId) {
 
   const reason = reasonInput.trim();
 
-  if (!reason) {
-    alert("A reason is required to void a sale.");
+  if (!reason || reason.length > 1000) {
+    alert(
+      "A reason of 1–1000 characters is required."
+    );
     return;
   }
 
-  const changes = [];
-  const voidedAt = new Date().toISOString();
-
-  if (sale.type === "stock") {
-    const currentProducts = loadArray(INVENTORY_KEY);
-
-    const product = currentProducts.find(
-      item => item.id === sale.productId
-    );
-
-    if (!product) {
-      alert(
-        "Cannot void this stock sale because its " +
-        "inventory product no longer exists."
-      );
-      return;
-    }
-
-    const quantity = Number(sale.quantity);
-
-    if (
-      !Number.isSafeInteger(quantity) ||
-      quantity <= 0 ||
-      !Number.isSafeInteger(Number(product.quantity)) ||
-      Number(product.quantity) < 0
-    ) {
-      alert(
-        "Invalid stock quantity. " +
-        "The sale was not voided."
-      );
-      return;
-    }
-
-    const previousQuantity = Number(product.quantity);
-    const newQuantity = previousQuantity + quantity;
-
-    if (!Number.isSafeInteger(newQuantity)) {
-      alert("Stock quantity is too large.");
-      return;
-    }
-
-    product.quantity = newQuantity;
-
-    changes.push([
-      INVENTORY_KEY,
-      JSON.stringify(currentProducts)
-    ]);
-
-    const history = loadArray(HISTORY_KEY);
-
-    history.unshift({
-      id: createId(),
-      productId: product.id,
-      productName: product.name,
-      type: "Sale Voided",
-      quantity,
-      previousQuantity,
-      newQuantity,
-      unitCost: Number(product.purchasePrice),
-      note: `Reversal of sale ${sale.id}: ${reason}`,
-      saleId: sale.id,
-      date: voidedAt
-    });
-
-    changes.push([
-      HISTORY_KEY,
-      JSON.stringify(history)
-    ]);
-  }
-
-  sale.status = "voided";
-  sale.voided = true;
-  sale.voidedAt = voidedAt;
-  sale.voidReason = reason;
-
-  changes.push([
-    SALES_KEY,
-    JSON.stringify(currentSales)
-  ]);
+  setBusy(true);
 
   try {
-    saveChanges(changes);
-  } catch {
-    alert(
-      "Unable to void sale. " +
-      "Check your records before trying again."
+    const { error } = await db.rpc(
+      "timidy_void_sale",
+      {
+        p_sale_id: saleId,
+        p_reason: reason,
+        p_history_id: createId()
+      }
     );
-    return;
+
+    if (error) {
+      throw error;
+    }
+
+    closeSaleDetails();
+
+    try {
+      await refreshData();
+
+      setMessage(
+        "Sale voided successfully. " +
+        "Inventory restored where applicable.",
+        "success"
+      );
+    } catch (refreshError) {
+      console.error(
+        "Void saved, but refresh failed:",
+        refreshError
+      );
+
+      setMessage(
+        "Sale voided in Supabase, but refreshing failed. " +
+        "Reload the page.",
+        "error"
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Unable to void sale:",
+      error
+    );
+
+    alert(
+      "Void not confirmed: " +
+      errorText(error) +
+      "\nCheck Supabase before retrying."
+    );
+  } finally {
+    setBusy(false);
   }
-
-  closeSaleDetails();
-
-  products = loadArray(INVENTORY_KEY);
-  sales = loadArray(SALES_KEY);
-
-  renderStockOptions();
-  renderSales();
-  updateProfitPreview();
-
-  setMessage(
-    "Sale voided successfully. Inventory restored where applicable.",
-    "success"
-  );
 }
 
 // =====================================
@@ -1014,12 +1034,15 @@ function loadReceiptLogo() {
 
     image.onload = () => {
       try {
-        const canvas = document.createElement("canvas");
+        const canvas = document.createElement(
+          "canvas"
+        );
 
         canvas.width = image.naturalWidth;
         canvas.height = image.naturalHeight;
 
         const context = canvas.getContext("2d");
+
         context.drawImage(image, 0, 0);
 
         resolve({
@@ -1033,6 +1056,7 @@ function loadReceiptLogo() {
     };
 
     image.onerror = () => resolve(null);
+
     image.src = "images/company-logo.png";
   });
 }
@@ -1043,7 +1067,7 @@ function pdfSafeText(value) {
 }
 
 async function downloadSaleReceipt(saleId) {
-  const sale = loadArray(SALES_KEY).find(
+  const sale = sales.find(
     item => item.id === saleId
   );
 
@@ -1053,7 +1077,9 @@ async function downloadSaleReceipt(saleId) {
   }
 
   if (isVoided(sale)) {
-    alert("Cannot generate a receipt for a voided sale.");
+    alert(
+      "Cannot generate a receipt for a voided sale."
+    );
     return;
   }
 
@@ -1080,7 +1106,9 @@ async function downloadSaleReceipt(saleId) {
       format: "a5"
     });
 
-    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageWidth =
+      pdf.internal.pageSize.getWidth();
+
     const margin = 14;
     const right = pageWidth - margin;
 
@@ -1129,7 +1157,12 @@ async function downloadSaleReceipt(saleId) {
     pdf.setTextColor(35, 45, 65);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
-    pdf.text("RECEIPT DETAILS", margin, y);
+
+    pdf.text(
+      "RECEIPT DETAILS",
+      margin,
+      y
+    );
 
     y += 9;
 
@@ -1137,6 +1170,7 @@ async function downloadSaleReceipt(saleId) {
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(9);
       pdf.setTextColor(105, 115, 130);
+
       pdf.text(label, margin, y);
 
       pdf.setFont("helvetica", "bold");
@@ -1176,12 +1210,24 @@ async function downloadSaleReceipt(saleId) {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
     pdf.setTextColor(35, 45, 65);
-    pdf.text("PURCHASE DETAILS", margin, y);
+
+    pdf.text(
+      "PURCHASE DETAILS",
+      margin,
+      y
+    );
 
     y += 10;
 
-    drawField("Product", sale.productName);
-    drawField("Quantity", sale.quantity ?? 1);
+    drawField(
+      "Product",
+      sale.productName
+    );
+
+    drawField(
+      "Quantity",
+      sale.quantity ?? 1
+    );
 
     drawField(
       "Sale Type",
@@ -1193,6 +1239,7 @@ async function downloadSaleReceipt(saleId) {
     y += 5;
 
     pdf.setFillColor(237, 242, 249);
+
     pdf.roundedRect(
       margin,
       y,
@@ -1206,9 +1253,15 @@ async function downloadSaleReceipt(saleId) {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
     pdf.setTextColor(35, 45, 65);
-    pdf.text("TOTAL PAID", margin + 6, y + 13);
+
+    pdf.text(
+      "TOTAL PAID",
+      margin + 6,
+      y + 13
+    );
 
     pdf.setFontSize(12);
+
     pdf.text(
       money(sale.amount),
       right - 6,
@@ -1230,6 +1283,7 @@ async function downloadSaleReceipt(saleId) {
     );
 
     pdf.setFontSize(8);
+
     pdf.text(
       "We appreciate your business.",
       pageWidth / 2,
@@ -1241,12 +1295,23 @@ async function downloadSaleReceipt(saleId) {
       .replace(/[^a-zA-Z0-9_-]/g, "")
       .slice(0, 36);
 
-    // Recheck status before saving.
-    const latestSale = loadArray(SALES_KEY).find(
-      item => item.id === saleId
-    );
+    // Verify the sale is still active
+    // before saving the PDF.
 
-    if (!latestSale || isVoided(latestSale)) {
+    const {
+      data: latestSale,
+      error: statusError
+    } = await db
+      .from("sales")
+      .select("status,voided")
+      .eq("id", saleId)
+      .maybeSingle();
+
+    if (
+      statusError ||
+      !latestSale ||
+      isVoided(latestSale)
+    ) {
       alert(
         "Receipt cancelled because the sale " +
         "is no longer active."
@@ -1258,13 +1323,17 @@ async function downloadSaleReceipt(saleId) {
       `Timidy-Receipt-${fileId || "Sale"}.pdf`
     );
   } catch (error) {
-    console.error("Receipt generation failed:", error);
+    console.error(
+      "Receipt generation failed:",
+      error
+    );
+
     alert("Unable to generate receipt.");
   }
 }
 
 // =====================================
-// THEME
+// LIGHT / DARK MODE
 // =====================================
 
 function applyTheme(theme) {
@@ -1281,7 +1350,8 @@ function applyTheme(theme) {
   );
 
   if (themeToggle) {
-    themeToggle.textContent = dark ? "☀️" : "🌙";
+    themeToggle.textContent =
+      dark ? "☀️" : "🌙";
   }
 }
 
@@ -1289,7 +1359,10 @@ function applyTheme(theme) {
 // INITIALIZATION
 // =====================================
 
-form.addEventListener("submit", recordSale);
+form.addEventListener(
+  "submit",
+  recordSale
+);
 
 middlemanTab.addEventListener("click", () => {
   changeSaleType("middleman");
@@ -1299,8 +1372,15 @@ stockTab.addEventListener("click", () => {
   changeSaleType("stock");
 });
 
-form.addEventListener("input", updateProfitPreview);
-form.addEventListener("change", updateProfitPreview);
+form.addEventListener(
+  "input",
+  updateProfitPreview
+);
+
+form.addEventListener(
+  "change",
+  updateProfitPreview
+);
 
 applyTheme(
   localStorage.getItem("timidy-theme") === "dark"
@@ -1308,20 +1388,57 @@ applyTheme(
     : "light"
 );
 
-themeToggle.addEventListener("click", () => {
-  const next = document.body.classList.contains("dark")
-    ? "light"
-    : "dark";
+if (themeToggle) {
+  themeToggle.addEventListener("click", () => {
+    const next =
+      document.body.classList.contains("dark")
+        ? "light"
+        : "dark";
 
-  localStorage.setItem("timidy-theme", next);
-  applyTheme(next);
-});
+    localStorage.setItem(
+      "timidy-theme",
+      next
+    );
 
-document.getElementById("saleDate").value = getLocalDate();
+    applyTheme(next);
+  });
+}
 
-renderStockOptions();
+document.getElementById("saleDate").value =
+  getLocalDate();
+
 changeSaleType("middleman");
-renderSales();
+
+async function initializeSales() {
+  setBusy(true);
+
+  try {
+    const user =
+      await window.TimidyAuth.getAuthorizedUser();
+
+    if (!user) {
+      window.location.replace("login.html");
+      return;
+    }
+
+    await refreshData();
+  } catch (error) {
+    console.error(
+      "Unable to load sales:",
+      error
+    );
+
+    setMessage(
+      "Unable to load sales: " +
+      errorText(error),
+      "error"
+    );
+  } finally {
+    setBusy(false);
+  }
+}
+
+initializeSales();
 
 if (typeof lucide !== "undefined") {
   lucide.createIcons();

@@ -7,6 +7,20 @@
 
   <title>Timidy Store | Settings</title>
 
+  <style>
+  html {
+    visibility: hidden;
+  }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/supabase-config.js"></script>
+<script src="js/auth.js"></script>
+
+<script>
+  TimidyAuth.requireAdmin();
+</script>
+
   <script src="js/theme-init.js"></script>
 
   <link rel="stylesheet" href="css/style.css">
@@ -177,7 +191,7 @@
         </div>
 
         <div class="header-actions">
-          <span class="demo-label">LOCAL DATA</span>
+          <span class="demo-label">CLOUD CONNECTED</span>
 
           <button
             id="themeToggle"
@@ -389,35 +403,123 @@
               <h3>Restore Store Data</h3>
 
               <p>
-                Restore records from a Timidy Store backup.
-                Existing records will be replaced after confirmation.
+                Database restore is temporarily unavailable
+  while we build a safe restoration process.
+  Your existing records will not be modified.
               </p>
 
-              <label
-                for="restoreFile"
-                class="settings-btn settings-btn-secondary"
-              >
-                <i data-lucide="upload"></i>
-                Choose Backup File
-              </label>
-
-              <input
-                id="restoreFile"
-                type="file"
-                accept=".json,application/json"
-                hidden
-              >
+              <button
+              type="button"
+              class="settings-btn settings-btn-secondary"
+              disabled
+              title="Database restore is not available yet"
+            >
+              <i data-lucide="upload"></i>
+              Restore Coming Soon
+            </button>
             </div>
 
           </div>
 
-          <p class="settings-warning">
-            <i data-lucide="alert-triangle"></i>
-            Data is currently stored in this browser.
-            Clearing browser storage may permanently remove it
-            unless you have a backup.
-          </p>
+        <p class="settings-warning">
+          <i data-lucide="alert-triangle"></i>
+          Business records are stored in Supabase.
+          Download backups regularly and keep them
+          in a secure location.
+        </p>
         </section>
+
+        
+<!-- ACCOUNT SECURITY -->
+<section class="dashboard-panel settings-panel">
+  <div class="settings-section-heading">
+    <div class="settings-section-icon">
+      <i data-lucide="shield-check"></i>
+    </div>
+
+    <div>
+      <h2>Account Security</h2>
+      <p>
+        Manage your administrator login credentials.
+      </p>
+    </div>
+  </div>
+
+  <form id="changePasswordForm">
+    <div class="settings-form-grid">
+
+      <div class="settings-field">
+        <label for="currentPassword">
+          Current Password
+        </label>
+
+        <input
+          id="currentPassword"
+          type="password"
+          autocomplete="current-password"
+          required
+        >
+      </div>
+
+      <div class="settings-field">
+        <label for="newPassword">
+          New Password
+        </label>
+
+        <input
+          id="newPassword"
+          type="password"
+          autocomplete="new-password"
+          minlength="12"
+          required
+        >
+      </div>
+
+      <div class="settings-field">
+        <label for="confirmPassword">
+          Confirm New Password
+        </label>
+
+        <input
+          id="confirmPassword"
+          type="password"
+          autocomplete="new-password"
+          minlength="12"
+          required
+        >
+      </div>
+
+    </div>
+
+    <p
+      id="passwordMessage"
+      class="settings-help"
+      role="status"
+      aria-live="polite"
+    ></p>
+
+    <div class="settings-actions">
+      <button
+        id="changePasswordButton"
+        type="submit"
+        class="settings-btn settings-btn-primary"
+      >
+        <i data-lucide="lock-keyhole"></i>
+        Change Password
+      </button>
+
+      <button
+        id="settingsLogout"
+        type="button"
+        class="settings-btn settings-btn-secondary"
+      >
+        <i data-lucide="log-out"></i>
+        Log Out
+      </button>
+    </div>
+  </form>
+</section>
+
 
         <!-- SYSTEM INFORMATION -->
         <section class="dashboard-panel settings-panel">
@@ -436,7 +538,7 @@
 
             <div class="settings-system-item">
               <span>Storage Mode</span>
-              <strong>Browser Local Storage</strong>
+              <strong>Supabase Cloud Database</strong>
             </div>
 
             <div class="settings-system-item">

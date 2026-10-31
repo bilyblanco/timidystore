@@ -2,33 +2,36 @@
 "use strict";
 
 // =====================================
-// TIMIDY STORE - REPORTS
-// Void-aware quarterly reporting
+// TIMIDY STORE — SUPABASE REPORTS
+// Quarterly financial reporting
 // =====================================
 
-const SALES_KEY = "timidy-sales";
-const EXPENSES_KEY = "timidy-expenses";
+const db = window.timidySupabase;
+
+if (!db) {
+  throw new Error("Supabase is not configured.");
+}
 
 const el = id => document.getElementById(id);
 
 const money = value =>
-  "TZS " + Number(value || 0).toLocaleString("en-TZ");
+  "TZS " + Number(value || 0).toLocaleString(
+    "en-TZ",
+    { maximumFractionDigits: 2 }
+  );
 
 let reportChart = null;
 let currentReport = null;
 
-// =====================================
-// STORAGE
-// =====================================
+let allSales = [];
+let allExpenses = [];
 
-function loadRecords(key) {
-  try {
-    const value = JSON.parse(localStorage.getItem(key));
-    return Array.isArray(value) ? value : [];
-  } catch {
-    return [];
-  }
-}
+let loading = false;
+let initialized = false;
+
+// =====================================
+// HELPERS
+// =====================================
 
 function sum(items, key) {
   return items.reduce(
@@ -38,13 +41,125 @@ function sum(items, key) {
   );
 }
 
+function mapSale(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    type: row.type,
+    status: row.status,
+    voided: row.voided,
+    productName: row.product_name,
+    quantity: Number(row.quantity || 0),
+    amount: Number(row.amount || 0),
+    cost: Number(row.cost || 0),
+    expenses: Number(row.expenses || 0),
+    profit: Number(row.profit || 0),
+    voidedAt: row.voided_at,
+    voidReason: row.void_reason
+  };
+}
+
+function mapExpense(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    title: row.title,
+    category: row.category,
+    amount: Number(row.amount || 0),
+    notes: row.notes
+  };
+}
+
+function showError(error) {
+  console.error("Reports error:", error);
+
+  const message = el("reportMessage");
+
+  if (message) {
+    message.textContent =
+      "Unable to load report data: " +
+      (error?.message || "Unknown error.");
+
+    message.setAttribute("role", "alert");
+  }
+}
+
+// =====================================
+// FETCH ALL DATABASE ROWS
+// =====================================
+
+async function fetchAllRows(
+  table,
+  columns
+) {
+  const pageSize = 500;
+  const result = [];
+
+  let start = 0;
+
+  while (true) {
+    const { data, error } = await db
+      .from(table)
+      .select(columns)
+      .order("id", {
+        ascending: true
+      })
+      .range(
+        start,
+        start + pageSize - 1
+      );
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = data || [];
+
+    result.push(...rows);
+
+    if (rows.length < pageSize) {
+      break;
+    }
+
+    start += pageSize;
+  }
+
+  return result;
+}
+
+async function loadReportData() {
+  const user =
+    await window.TimidyAuth.getAuthorizedUser();
+
+  if (!user) {
+    window.location.replace("login.html");
+    throw new Error("Admin session expired.");
+  }
+
+  const [salesRows, expenseRows] =
+    await Promise.all([
+      fetchAllRows(
+        "sales",
+        "id,date,type,status,voided," +
+        "product_name,quantity,amount,cost," +
+        "expenses,profit,voided_at,void_reason"
+      ),
+
+      fetchAllRows(
+        "expenses",
+        "id,date,title,category,amount,notes"
+      )
+    ]);
+
+  // Update both arrays only after both
+  // database queries succeed.
+  allSales = salesRows.map(mapSale);
+  allExpenses = expenseRows.map(mapExpense);
+}
+
 // =====================================
 // SALE STATUS
 // =====================================
-
-// Existing sales without a status are active.
-// Newer voided sales have status="voided"
-// and/or voided=true.
 
 function isVoidedSale(sale) {
   return (
@@ -68,10 +183,12 @@ function getVoidedSales(sales) {
 // =====================================
 
 function calculate(sales, expenses) {
-  // Always exclude voided sales.
   const activeSales = getActiveSales(sales);
 
-  const revenue = sum(activeSales, "amount");
+  const revenue = sum(
+    activeSales,
+    "amount"
+  );
 
   const productCosts = sum(
     activeSales,
@@ -159,33 +276,34 @@ function createReport() {
     month => month.key
   );
 
-  const allQuarterSales = loadRecords(
-    SALES_KEY
-  ).filter(sale =>
-    typeof sale.date === "string" &&
-    keys.includes(sale.date.slice(0, 7))
+  const allQuarterSales = allSales.filter(
+    sale =>
+      typeof sale.date === "string" &&
+      keys.includes(
+        sale.date.slice(0, 7)
+      )
   );
 
-  // Active sales drive every financial total.
   const sales = getActiveSales(
     allQuarterSales
   );
 
-  // Retain cancellations separately for audit.
   const voidedSales = getVoidedSales(
     allQuarterSales
   );
 
-  const expenses = loadRecords(
-    EXPENSES_KEY
-  ).filter(expense =>
-    typeof expense.date === "string" &&
-    keys.includes(expense.date.slice(0, 7))
+  const expenses = allExpenses.filter(
+    expense =>
+      typeof expense.date === "string" &&
+      keys.includes(
+        expense.date.slice(0, 7)
+      )
   );
 
   const monthly = months.map(month => {
     const monthSales = sales.filter(
-      sale => sale.date.startsWith(month.key)
+      sale =>
+        sale.date.startsWith(month.key)
     );
 
     const monthExpenses = expenses.filter(
@@ -210,7 +328,10 @@ function createReport() {
     voidedSales,
     expenses,
     monthly,
-    totals: calculate(sales, expenses)
+    totals: calculate(
+      sales,
+      expenses
+    )
   };
 }
 
@@ -389,7 +510,7 @@ function renderTransactions(report) {
     [
       record.date,
       record.type,
-      record.description,
+      record.description || "—",
       money(record.amount)
     ].forEach(value => {
       row.insertCell().textContent = value;
@@ -504,6 +625,8 @@ function renderChart(report) {
 // =====================================
 
 function renderReport() {
+  if (!initialized) return;
+
   currentReport = createReport();
 
   const totals = currentReport.totals;
@@ -548,10 +671,37 @@ function renderReport() {
 }
 
 // =====================================
+// REFRESH REPORT DATA
+// =====================================
+
+async function refreshReports() {
+  if (loading) return;
+
+  loading = true;
+
+  try {
+    await loadReportData();
+
+    if (!initialized) {
+      initializeYears();
+      initialized = true;
+    } else {
+      initializeYears(true);
+    }
+
+    renderReport();
+  } catch (error) {
+    showError(error);
+  } finally {
+    loading = false;
+  }
+}
+
+// =====================================
 // PDF EXPORT
 // =====================================
 
-function downloadPDF() {
+async function downloadPDF() {
   if (!window.jspdf?.jsPDF) {
     alert(
       "PDF library did not load. " +
@@ -560,144 +710,179 @@ function downloadPDF() {
     return;
   }
 
-  // Regenerate from current records before export.
-  const report = createReport();
-  currentReport = report;
+  if (loading) return;
 
-  const totals = report.totals;
+  loading = true;
 
-  const pdf = new window.jspdf.jsPDF();
+  try {
+    await loadReportData();
 
-  let y = 20;
+    const report = createReport();
+    currentReport = report;
 
-  pdf.setFontSize(20);
-  pdf.text("TIMIDY STORE", 15, y);
+    const totals = report.totals;
 
-  y += 10;
+    const pdf = new window.jspdf.jsPDF();
 
-  pdf.setFontSize(12);
+    let y = 20;
 
-  pdf.text(
-    `Quarterly Financial Report - ` +
-    `Q${report.quarter} ${report.year}`,
-    15,
-    y
-  );
+    pdf.setFontSize(20);
+    pdf.text("TIMIDY STORE", 15, y);
 
-  y += 12;
-  pdf.setFontSize(10);
+    y += 10;
 
-  const lines = [
-    ["Revenue", totals.revenue],
-    ["Cost of Products Sold", totals.productCosts],
-    ["Gross Profit", totals.gross],
-    ["Transaction Expenses", totals.transactionCosts],
-    ["Operating Expenses", totals.operatingCosts],
-    ["Net Profit", totals.net]
-  ];
+    pdf.setFontSize(12);
+    pdf.text(
+      `Quarterly Financial Report - ` +
+      `Q${report.quarter} ${report.year}`,
+      15,
+      y
+    );
 
-  lines.forEach(([label, amount]) => {
-    pdf.text(label, 15, y);
+    y += 12;
+    pdf.setFontSize(10);
+
+    const lines = [
+      ["Revenue", totals.revenue],
+      [
+        "Cost of Products Sold",
+        totals.productCosts
+      ],
+      ["Gross Profit", totals.gross],
+      [
+        "Transaction Expenses",
+        totals.transactionCosts
+      ],
+      [
+        "Operating Expenses",
+        totals.operatingCosts
+      ],
+      ["Net Profit", totals.net]
+    ];
+
+    lines.forEach(([label, amount]) => {
+      pdf.text(label, 15, y);
+
+      pdf.text(
+        money(amount),
+        195,
+        y,
+        { align: "right" }
+      );
+
+      y += 9;
+    });
+
+    y += 6;
 
     pdf.text(
-      money(amount),
-      195,
-      y,
-      { align: "right" }
+      `Net Profit Margin: ${
+        totals.margin.toFixed(1)
+      }%`,
+      15,
+      y
+    );
+
+    y += 12;
+
+    pdf.setFontSize(12);
+    pdf.text(
+      "Monthly Performance",
+      15,
+      y
     );
 
     y += 9;
-  });
+    pdf.setFontSize(10);
 
-  y += 6;
+    report.monthly.forEach(month => {
+      const line =
+        `${month.label}: ` +
+        `Revenue ${money(month.revenue)} | ` +
+        `Net Profit ${money(month.net)}`;
 
-  pdf.text(
-    `Net Profit Margin: ${
-      totals.margin.toFixed(1)
-    }%`,
-    15,
-    y
-  );
+      const wrapped = pdf.splitTextToSize(
+        line,
+        180
+      );
 
-  y += 12;
+      pdf.text(wrapped, 15, y);
+      y += wrapped.length * 6 + 2;
+    });
 
-  pdf.setFontSize(12);
-  pdf.text("Monthly Performance", 15, y);
+    y += 8;
 
-  y += 9;
-  pdf.setFontSize(10);
+    pdf.setFontSize(12);
+    pdf.text("Sales Summary", 15, y);
 
-  report.monthly.forEach(month => {
+    y += 9;
+    pdf.setFontSize(10);
+
+    const middlemanCount =
+      report.sales.filter(
+        sale => sale.type === "middleman"
+      ).length;
+
+    const stockCount =
+      report.sales.filter(
+        sale => sale.type === "stock"
+      ).length;
+
     pdf.text(
-      `${month.label}: ` +
-      `Revenue ${money(month.revenue)} | ` +
-      `Net Profit ${money(month.net)}`,
+      `Middleman Sales: ${middlemanCount}`,
       15,
       y
     );
 
     y += 8;
-  });
 
-  y += 8;
+    pdf.text(
+      `Own Stock Sales: ${stockCount}`,
+      15,
+      y
+    );
 
-  pdf.setFontSize(12);
-  pdf.text("Sales Summary", 15, y);
+    y += 8;
 
-  y += 9;
-  pdf.setFontSize(10);
+    pdf.text(
+      `Voided Sales Excluded: ${
+        report.voidedSales.length
+      }`,
+      15,
+      y
+    );
 
-  const middlemanCount = report.sales.filter(
-    sale => sale.type === "middleman"
-  ).length;
+    pdf.setFontSize(9);
+    pdf.setTextColor(110);
 
-  const stockCount = report.sales.filter(
-    sale => sale.type === "stock"
-  ).length;
+    pdf.text(
+      "Generated from Timidy Store Supabase records.",
+      15,
+      280
+    );
 
-  pdf.text(
-    `Middleman Sales: ${middlemanCount}`,
-    15,
-    y
-  );
+    pdf.save(
+      `Timidy-Store-Q${report.quarter}-${report.year}.pdf`
+    );
 
-  y += 8;
+    renderReport();
+  } catch (error) {
+    console.error(error);
 
-  pdf.text(
-    `Own Stock Sales: ${stockCount}`,
-    15,
-    y
-  );
-
-  y += 8;
-
-  pdf.text(
-    `Voided Sales Excluded: ${
-      report.voidedSales.length
-    }`,
-    15,
-    y
-  );
-
-  pdf.setFontSize(9);
-  pdf.setTextColor(110);
-
-  pdf.text(
-    "Generated from browser-based prototype records.",
-    15,
-    280
-  );
-
-  pdf.save(
-    `Timidy-Store-Q${report.quarter}-${report.year}.pdf`
-  );
+    alert(
+      "Could not generate PDF: " +
+      (error?.message || "Unknown error")
+    );
+  } finally {
+    loading = false;
+  }
 }
 
 // =====================================
 // EXCEL EXPORT
 // =====================================
 
-function downloadExcel() {
+async function downloadExcel() {
   if (typeof XLSX === "undefined") {
     alert(
       "Excel library did not load. " +
@@ -706,171 +891,205 @@ function downloadExcel() {
     return;
   }
 
-  // Always export the latest stored records.
-  const report = createReport();
-  currentReport = report;
+  if (loading) return;
 
-  const totals = report.totals;
+  loading = true;
 
-  const workbook = XLSX.utils.book_new();
+  try {
+    await loadReportData();
 
-  // -------- SUMMARY --------
+    const report = createReport();
+    currentReport = report;
 
-  const summary = [
-    ["Timidy Store - Quarterly Report"],
-    ["Year", report.year],
-    ["Quarter", `Q${report.quarter}`],
-    [],
-    ["Metric", "TZS"],
-    ["Revenue", totals.revenue],
-    ["Cost of Products Sold", totals.productCosts],
-    ["Gross Profit", totals.gross],
-    [
-      "Transaction Expenses",
-      totals.transactionCosts
-    ],
-    [
-      "Operating Expenses",
-      totals.operatingCosts
-    ],
-    ["Net Profit", totals.net],
-    [
-      "Net Profit Margin (%)",
-      totals.margin
-    ],
-    [],
-    [
-      "Voided Sales Excluded",
-      report.voidedSales.length
-    ]
-  ];
+    const totals = report.totals;
 
-  const summarySheet =
-    XLSX.utils.aoa_to_sheet(summary);
+    const workbook = XLSX.utils.book_new();
 
-  summarySheet["!cols"] = [
-    { wch: 30 },
-    { wch: 20 }
-  ];
+    // -------- SUMMARY --------
 
-  XLSX.utils.book_append_sheet(
-    workbook,
-    summarySheet,
-    "Summary"
-  );
+    const summary = [
+      ["Timidy Store - Quarterly Report"],
+      ["Year", report.year],
+      ["Quarter", `Q${report.quarter}`],
+      [],
+      ["Metric", "TZS"],
+      ["Revenue", totals.revenue],
+      [
+        "Cost of Products Sold",
+        totals.productCosts
+      ],
+      ["Gross Profit", totals.gross],
+      [
+        "Transaction Expenses",
+        totals.transactionCosts
+      ],
+      [
+        "Operating Expenses",
+        totals.operatingCosts
+      ],
+      ["Net Profit", totals.net],
+      [
+        "Net Profit Margin (%)",
+        totals.margin
+      ],
+      [],
+      [
+        "Voided Sales Excluded",
+        report.voidedSales.length
+      ]
+    ];
 
-  // -------- MONTHLY --------
+    const summarySheet =
+      XLSX.utils.aoa_to_sheet(summary);
 
-  const monthlySheet =
-    XLSX.utils.json_to_sheet(
-      report.monthly.map(month => ({
-        Month: month.label,
-        Revenue: month.revenue,
-        "Product Costs": month.productCosts,
-        "Gross Profit": month.gross,
-        "Transaction Expenses":
-          month.transactionCosts,
-        "Operating Expenses":
-          month.operatingCosts,
-        "Net Profit": month.net
-      }))
+    summarySheet["!cols"] = [
+      { wch: 30 },
+      { wch: 20 }
+    ];
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      summarySheet,
+      "Summary"
     );
 
-  XLSX.utils.book_append_sheet(
-    workbook,
-    monthlySheet,
-    "Monthly"
-  );
+    // -------- MONTHLY --------
 
-  // -------- ACTIVE SALES --------
+    const monthlySheet =
+      XLSX.utils.json_to_sheet(
+        report.monthly.map(month => ({
+          Month: month.label,
+          Revenue: month.revenue,
+          "Product Costs":
+            month.productCosts,
+          "Gross Profit": month.gross,
+          "Transaction Expenses":
+            month.transactionCosts,
+          "Operating Expenses":
+            month.operatingCosts,
+          "Net Profit": month.net
+        }))
+      );
 
-  const salesSheet =
-    XLSX.utils.json_to_sheet(
-      report.sales.map(sale => ({
-        Date: sale.date,
-        Product: sale.productName,
-        Type: sale.type,
-        Quantity: sale.quantity,
-        Revenue: sale.amount,
-        "Product Cost": sale.cost,
-        "Transaction Expenses": sale.expenses,
-        Profit: sale.profit,
-        Status: "Active"
-      }))
+    XLSX.utils.book_append_sheet(
+      workbook,
+      monthlySheet,
+      "Monthly"
     );
 
-  XLSX.utils.book_append_sheet(
-    workbook,
-    salesSheet,
-    "Sales"
-  );
+    // -------- ACTIVE SALES --------
 
-  // -------- OPERATING EXPENSES --------
+    const salesSheet =
+      XLSX.utils.json_to_sheet(
+        report.sales.map(sale => ({
+          Date: sale.date,
+          Product: sale.productName,
+          Type: sale.type,
+          Quantity: sale.quantity,
+          Revenue: sale.amount,
+          "Product Cost": sale.cost,
+          "Transaction Expenses":
+            sale.expenses,
+          Profit: sale.profit,
+          Status: "Active"
+        }))
+      );
 
-  const expensesSheet =
-    XLSX.utils.json_to_sheet(
-      report.expenses.map(expense => ({
-        Date: expense.date,
-        Description: expense.title,
-        Category: expense.category,
-        Amount: expense.amount,
-        Notes: expense.notes
-      }))
+    XLSX.utils.book_append_sheet(
+      workbook,
+      salesSheet,
+      "Sales"
     );
 
-  XLSX.utils.book_append_sheet(
-    workbook,
-    expensesSheet,
-    "Expenses"
-  );
+    // -------- OPERATING EXPENSES --------
 
-  // -------- VOIDED SALES AUDIT --------
+    const expensesSheet =
+      XLSX.utils.json_to_sheet(
+        report.expenses.map(expense => ({
+          Date: expense.date,
+          Description: expense.title,
+          Category: expense.category,
+          Amount: expense.amount,
+          Notes: expense.notes
+        }))
+      );
 
-  const voidedSheet =
-    XLSX.utils.json_to_sheet(
-      report.voidedSales.map(sale => ({
-        "Sale ID": sale.id,
-        "Original Date": sale.date,
-        Product: sale.productName,
-        Type: sale.type,
-        Quantity: sale.quantity,
-        "Original Revenue": sale.amount,
-        "Original Product Cost": sale.cost,
-        "Original Transaction Expenses":
-          sale.expenses,
-        "Original Profit": sale.profit,
-        Status: "Voided",
-        "Voided At": sale.voidedAt || "",
-        "Void Reason": sale.voidReason || ""
-      }))
+    XLSX.utils.book_append_sheet(
+      workbook,
+      expensesSheet,
+      "Expenses"
     );
 
-  XLSX.utils.book_append_sheet(
-    workbook,
-    voidedSheet,
-    "Voided Sales"
-  );
+    // -------- VOIDED SALES AUDIT --------
 
-  XLSX.writeFile(
-    workbook,
-    `Timidy-Store-Q${report.quarter}-${report.year}.xlsx`
-  );
+    const voidedSheet =
+      XLSX.utils.json_to_sheet(
+        report.voidedSales.map(sale => ({
+          "Sale ID": sale.id,
+          "Original Date": sale.date,
+          Product: sale.productName,
+          Type: sale.type,
+          Quantity: sale.quantity,
+          "Original Revenue": sale.amount,
+          "Original Product Cost":
+            sale.cost,
+          "Original Transaction Expenses":
+            sale.expenses,
+          "Original Profit": sale.profit,
+          Status: "Voided",
+          "Voided At":
+            sale.voidedAt || "",
+          "Void Reason":
+            sale.voidReason || ""
+        }))
+      );
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      voidedSheet,
+      "Voided Sales"
+    );
+
+    XLSX.writeFile(
+      workbook,
+      `Timidy-Store-Q${report.quarter}-${report.year}.xlsx`
+    );
+
+    renderReport();
+  } catch (error) {
+    console.error(error);
+
+    alert(
+      "Could not generate Excel report: " +
+      (error?.message || "Unknown error")
+    );
+  } finally {
+    loading = false;
+  }
 }
 
 // =====================================
 // REPORT YEAR OPTIONS
 // =====================================
 
-function initializeYears() {
+function initializeYears(
+  preserveSelection = false
+) {
   const now = new Date();
+
+  const yearSelect = el("reportYear");
+  const quarterSelect = el("reportQuarter");
+
+  const previousYear = yearSelect.value;
+  const previousQuarter = quarterSelect.value;
 
   const years = new Set([
     now.getFullYear()
   ]);
 
   [
-    ...loadRecords(SALES_KEY),
-    ...loadRecords(EXPENSES_KEY)
+    ...allSales,
+    ...allExpenses
   ].forEach(record => {
     if (
       /^\d{4}-\d{2}-\d{2}$/.test(
@@ -878,12 +1097,12 @@ function initializeYears() {
       )
     ) {
       years.add(
-        Number(record.date.slice(0, 4))
+        Number(
+          record.date.slice(0, 4)
+        )
       );
     }
   });
-
-  const yearSelect = el("reportYear");
 
   yearSelect.replaceChildren();
 
@@ -895,13 +1114,28 @@ function initializeYears() {
       );
     });
 
+  const selectedYear =
+    preserveSelection &&
+    years.has(Number(previousYear))
+      ? Number(previousYear)
+      : now.getFullYear();
+
   yearSelect.value = String(
-    now.getFullYear()
+    selectedYear
   );
 
-  el("reportQuarter").value = String(
-    Math.floor(now.getMonth() / 3) + 1
-  );
+  const currentQuarter =
+    Math.floor(
+      now.getMonth() / 3
+    ) + 1;
+
+  quarterSelect.value =
+    preserveSelection &&
+    [1, 2, 3, 4].includes(
+      Number(previousQuarter)
+    )
+      ? previousQuarter
+      : String(currentQuarter);
 }
 
 // =====================================
@@ -924,9 +1158,8 @@ function applyTheme(theme) {
   );
 
   if (themeToggle) {
-    themeToggle.textContent = dark
-      ? "☀️"
-      : "🌙";
+    themeToggle.textContent =
+      dark ? "☀️" : "🌙";
   }
 }
 
@@ -941,7 +1174,9 @@ if (themeToggle) {
     "click",
     () => {
       const next =
-        document.body.classList.contains("dark")
+        document.body.classList.contains(
+          "dark"
+        )
           ? "light"
           : "dark";
 
@@ -951,7 +1186,10 @@ if (themeToggle) {
       );
 
       applyTheme(next);
-      renderReport();
+
+      if (initialized) {
+        renderReport();
+      }
     }
   );
 }
@@ -980,28 +1218,34 @@ el("downloadExcel").addEventListener(
   downloadExcel
 );
 
-// Refresh when returning from Sales page.
+// Refresh when returning to Reports.
+
 window.addEventListener(
   "pageshow",
-  renderReport
+  () => {
+    refreshReports();
+  }
 );
 
-// Refresh when data changes in another tab.
-window.addEventListener("storage", event => {
-  if (
-    event.key === SALES_KEY ||
-    event.key === EXPENSES_KEY
-  ) {
-    renderReport();
+// Refresh when switching back to the tab.
+
+document.addEventListener(
+  "visibilitychange",
+  () => {
+    if (
+      !document.hidden &&
+      initialized
+    ) {
+      refreshReports();
+    }
   }
-});
+);
 
 // =====================================
 // INITIALIZATION
 // =====================================
 
-initializeYears();
-renderReport();
+refreshReports();
 
 if (typeof lucide !== "undefined") {
   lucide.createIcons();

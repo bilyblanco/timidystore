@@ -2,23 +2,19 @@
 "use strict";
 
 // =====================================
-// TIMIDY STORE - SETTINGS
+// TIMIDY STORE — SUPABASE SETTINGS
 // =====================================
 
-const SETTINGS_KEYS = {
-  sales: "timidy-sales",
-  inventory: "timidy-inventory",
-  customers: "timidy-customers",
-  expenses: "timidy-expenses",
-  stockHistory: "timidy-stock-history",
-  profile: "timidy-business-profile",
-  theme: "timidy-theme"
-};
+const settingsDb = window.timidySupabase;
 
-const SETTINGS_BACKUP_VERSION = 1;
+if (!settingsDb) {
+  throw new Error("Supabase is not configured.");
+}
 
 const settingsEl = id =>
   document.getElementById(id);
+
+const SETTINGS_BACKUP_VERSION = 2;
 
 const DEFAULT_PROFILE = {
   name: "Timidy Store",
@@ -29,115 +25,116 @@ const DEFAULT_PROFILE = {
   currency: "TZS"
 };
 
+let currentProfile = {
+  ...DEFAULT_PROFILE
+};
+
+let settingsBusy = false;
+
 // =====================================
-// STORAGE HELPERS
+// MESSAGES
 // =====================================
 
-function settingsLoadArray(key) {
-  try {
-    const data = JSON.parse(
-      localStorage.getItem(key)
-    );
-
-    return Array.isArray(data)
-      ? data
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function settingsLoadProfile() {
-  try {
-    const stored = JSON.parse(
-      localStorage.getItem(
-        SETTINGS_KEYS.profile
-      )
-    );
-
-    if (
-      !stored ||
-      typeof stored !== "object" ||
-      Array.isArray(stored)
-    ) {
-      return { ...DEFAULT_PROFILE };
-    }
-
-    return {
-      ...DEFAULT_PROFILE,
-      ...stored,
-      currency: "TZS"
-    };
-  } catch {
-    return { ...DEFAULT_PROFILE };
-  }
-}
-
-function settingsMessage(text, type = "success") {
-  const message = settingsEl(
-    "settingsMessage"
-  );
+function settingsMessage(
+  text,
+  type = "success"
+) {
+  const message = settingsEl("settingsMessage");
 
   if (!message) return;
 
   message.textContent = text;
   message.hidden = false;
-
   message.className =
     `settings-message ${type}`;
+}
+
+function passwordMessage(
+  text,
+  isError = false
+) {
+  const message = settingsEl("passwordMessage");
+
+  if (!message) return;
+
+  message.textContent = text;
+  message.style.color = isError
+    ? "#dc2626"
+    : "#16a34a";
+}
+
+// =====================================
+// ADMIN AUTHORIZATION
+// =====================================
+
+async function requireSettingsAdmin() {
+  const user =
+    await window.TimidyAuth.getAuthorizedUser();
+
+  if (!user) {
+    window.location.replace("login.html");
+    throw new Error("Administrator session expired.");
+  }
+
+  return user;
 }
 
 // =====================================
 // BUSINESS PROFILE
 // =====================================
 
-function loadBusinessProfile() {
-  const profile = settingsLoadProfile();
-
+function populateBusinessProfile(profile) {
   settingsEl("businessName").value =
-    profile.name;
+    profile.name || "";
 
   settingsEl("businessOwner").value =
-    profile.owner;
+    profile.owner || "";
 
   settingsEl("businessPhone").value =
-    profile.phone;
+    profile.phone || "";
 
   settingsEl("businessEmail").value =
-    profile.email;
+    profile.email || "";
 
   settingsEl("businessLocation").value =
-    profile.location;
+    profile.location || "";
 
-  settingsEl("businessCurrency").value =
-    "TZS";
+  settingsEl("businessCurrency").value = "TZS";
 }
 
-function saveBusinessProfile(event) {
+async function loadBusinessProfile() {
+  const { data, error } = await settingsDb
+    .from("business_profile")
+    .select(
+      "id,name,owner,phone,email,location,currency"
+    )
+    .eq("id", 1)
+    .single();
+
+  if (error) throw error;
+
+  currentProfile = {
+    ...DEFAULT_PROFILE,
+    ...data,
+    currency: "TZS"
+  };
+
+  populateBusinessProfile(currentProfile);
+}
+
+async function saveBusinessProfile(event) {
   event.preventDefault();
 
+  if (settingsBusy) return;
+
   const profile = {
-    name: settingsEl(
-      "businessName"
-    ).value.trim(),
-
-    owner: settingsEl(
-      "businessOwner"
-    ).value.trim(),
-
-    phone: settingsEl(
-      "businessPhone"
-    ).value.trim(),
-
-    email: settingsEl(
-      "businessEmail"
-    ).value.trim(),
-
-    location: settingsEl(
-      "businessLocation"
-    ).value.trim(),
-
-    currency: "TZS"
+    name: settingsEl("businessName").value.trim(),
+    owner: settingsEl("businessOwner").value.trim(),
+    phone: settingsEl("businessPhone").value.trim(),
+    email: settingsEl("businessEmail").value.trim(),
+    location: settingsEl("businessLocation").value.trim(),
+    currency: "TZS",
+    updated_at: new Date().toISOString()
   };
 
   if (!profile.name || !profile.owner) {
@@ -148,20 +145,45 @@ function saveBusinessProfile(event) {
     return;
   }
 
+  settingsBusy = true;
+
+  const button = settingsEl(
+    "businessProfileForm"
+  ).querySelector('[type="submit"]');
+
+  button.disabled = true;
+
   try {
-    localStorage.setItem(
-      SETTINGS_KEYS.profile,
-      JSON.stringify(profile)
-    );
+    await requireSettingsAdmin();
+
+    const { data, error } = await settingsDb
+      .from("business_profile")
+      .update(profile)
+      .eq("id", 1)
+      .select(
+        "id,name,owner,phone,email,location,currency"
+      )
+      .single();
+
+    if (error) throw error;
+
+    currentProfile = {
+      ...DEFAULT_PROFILE,
+      ...data
+    };
 
     settingsMessage(
-      "Business profile saved successfully."
+      "Business profile saved to Supabase successfully."
     );
-  } catch {
+  } catch (error) {
     settingsMessage(
-      "Unable to save the business profile.",
+      "Unable to save business profile: " +
+      (error.message || "Unknown error"),
       "error"
     );
+  } finally {
+    settingsBusy = false;
+    button.disabled = false;
   }
 }
 
@@ -182,149 +204,221 @@ function settingsApplyTheme(theme) {
     dark
   );
 
-  const toggle = settingsEl(
-    "themeToggle"
-  );
+  const toggle = settingsEl("themeToggle");
 
   if (toggle) {
-    toggle.textContent = dark
-      ? "☀️"
-      : "🌙";
+    toggle.textContent = dark ? "☀️" : "🌙";
   }
 
   document.querySelectorAll(
     'input[name="settingsTheme"]'
   ).forEach(input => {
-    input.checked =
-      input.value === theme;
+    input.checked = input.value === theme;
   });
 }
 
 function settingsSaveTheme(theme) {
-  try {
-    localStorage.setItem(
-      SETTINGS_KEYS.theme,
-      theme
-    );
+  localStorage.setItem(
+    "timidy-theme",
+    theme
+  );
 
-    settingsApplyTheme(theme);
-  } catch {
-    settingsMessage(
-      "Unable to save the theme preference.",
-      "error"
-    );
-  }
+  settingsApplyTheme(theme);
 }
 
 function initializeSettingsTheme() {
   const theme =
-    localStorage.getItem(
-      SETTINGS_KEYS.theme
-    ) === "dark"
+    localStorage.getItem("timidy-theme") === "dark"
       ? "dark"
       : "light";
 
   settingsApplyTheme(theme);
 
-  const toggle = settingsEl(
-    "themeToggle"
+  settingsEl("themeToggle")?.addEventListener(
+    "click",
+    () => {
+      const next =
+        document.body.classList.contains("dark")
+          ? "light"
+          : "dark";
+
+      settingsSaveTheme(next);
+    }
   );
-
-  if (toggle) {
-    toggle.addEventListener(
-      "click",
-      () => {
-        const next =
-          document.body.classList.contains(
-            "dark"
-          )
-            ? "light"
-            : "dark";
-
-        settingsSaveTheme(next);
-      }
-    );
-  }
 
   document.querySelectorAll(
     'input[name="settingsTheme"]'
   ).forEach(input => {
-    input.addEventListener(
-      "change",
-      () => {
-        if (input.checked) {
-          settingsSaveTheme(
-            input.value
-          );
-        }
+    input.addEventListener("change", () => {
+      if (input.checked) {
+        settingsSaveTheme(input.value);
       }
-    );
+    });
   });
 }
 
 // =====================================
-// BACKUP
+// DATABASE PAGINATION
 // =====================================
 
-function createSettingsBackup() {
-  const records = {};
-
-  [
-    "sales",
-    "inventory",
-    "customers",
-    "expenses",
-    "stockHistory"
-  ].forEach(name => {
-    records[name] = settingsLoadArray(
-      SETTINGS_KEYS[name]
-    );
-  });
-
-  return {
-    application: "Timidy Store",
-    version: SETTINGS_BACKUP_VERSION,
-    exportedAt: new Date().toISOString(),
-
-    records,
-
-    settings: {
-      profile: settingsLoadProfile(),
-
-      theme:
-        localStorage.getItem(
-          SETTINGS_KEYS.theme
-        ) === "dark"
-          ? "dark"
-          : "light"
-    }
-  };
-}
-
-function downloadSettingsJSON(
-  data,
-  filename
+async function fetchAllSettingsRows(
+  table,
+  columns = "*"
 ) {
+  const pageSize = 500;
+  const result = [];
+
+  let start = 0;
+
+  while (true) {
+    const { data, error } = await settingsDb
+      .from(table)
+      .select(columns)
+      .order("id", { ascending: true })
+      .range(
+        start,
+        start + pageSize - 1
+      );
+
+    if (error) throw error;
+
+    const rows = data || [];
+
+    result.push(...rows);
+
+    if (rows.length < pageSize) break;
+
+    start += pageSize;
+  }
+
+  return result;
+}
+
+// =====================================
+// SYSTEM INFORMATION
+// =====================================
+
+async function updateSettingsSystemInfo() {
+  try {
+    await requireSettingsAdmin();
+
+    const [
+      salesResult,
+      inventoryResult,
+      customersResult,
+      expensesResult,
+      historyResult,
+      voidedResult
+    ] = await Promise.all([
+      settingsDb
+        .from("sales")
+        .select("*", {
+          count: "exact",
+          head: true
+        }),
+
+      settingsDb
+        .from("inventory")
+        .select("*", {
+          count: "exact",
+          head: true
+        }),
+
+      settingsDb
+        .from("customers")
+        .select("*", {
+          count: "exact",
+          head: true
+        }),
+
+      settingsDb
+        .from("expenses")
+        .select("*", {
+          count: "exact",
+          head: true
+        }),
+
+      settingsDb
+        .from("stock_history")
+        .select("*", {
+          count: "exact",
+          head: true
+        }),
+
+      settingsDb
+        .from("sales")
+        .select("*", {
+          count: "exact",
+          head: true
+        })
+        .eq("status", "voided")
+    ]);
+
+    const results = [
+      salesResult,
+      inventoryResult,
+      customersResult,
+      expensesResult,
+      historyResult,
+      voidedResult
+    ];
+
+    const failed = results.find(
+      result => result.error
+    );
+
+    if (failed) throw failed.error;
+
+    const ids = [
+      "settingsSalesCount",
+      "settingsInventoryCount",
+      "settingsCustomersCount",
+      "settingsExpensesCount",
+      "settingsHistoryCount",
+      "settingsVoidedCount"
+    ];
+
+    results.forEach((result, index) => {
+      settingsEl(ids[index]).textContent =
+        Number(result.count || 0)
+          .toLocaleString("en-TZ");
+    });
+  } catch (error) {
+    console.error(error);
+
+    settingsMessage(
+      "Unable to load system information: " +
+      (error.message || "Unknown error"),
+      "error"
+    );
+  }
+}
+
+// =====================================
+// BACKUP DOWNLOAD
+// =====================================
+
+function settingsDateStamp() {
+  const date = new Date();
+
+  return (
+    date.getFullYear() +
+    "-" +
+    String(date.getMonth() + 1).padStart(2, "0") +
+    "-" +
+    String(date.getDate()).padStart(2, "0")
+  );
+}
+
+function downloadSettingsJSON(data, filename) {
   const blob = new Blob(
-    [
-      JSON.stringify(
-        data,
-        null,
-        2
-      )
-    ],
-    {
-      type: "application/json"
-    }
+    [JSON.stringify(data, null, 2)],
+    { type: "application/json" }
   );
 
-  const url = URL.createObjectURL(
-    blob
-  );
+  const url = URL.createObjectURL(blob);
 
-  const anchor = document.createElement(
-    "a"
-  );
+  const anchor = document.createElement("a");
 
   anchor.href = url;
   anchor.download = filename;
@@ -333,32 +427,76 @@ function downloadSettingsJSON(
   anchor.click();
   anchor.remove();
 
-  // Revoke later so the download can start.
   setTimeout(
     () => URL.revokeObjectURL(url),
     1000
   );
 }
 
-function settingsDateStamp() {
-  const date = new Date();
+async function downloadSettingsBackup() {
+  if (settingsBusy) return;
 
-  return (
-    date.getFullYear() +
-    "-" +
-    String(
-      date.getMonth() + 1
-    ).padStart(2, "0") +
-    "-" +
-    String(
-      date.getDate()
-    ).padStart(2, "0")
-  );
-}
+  settingsBusy = true;
 
-function downloadSettingsBackup() {
+  const button = settingsEl("backupData");
+  button.disabled = true;
+
   try {
-    const backup = createSettingsBackup();
+    await requireSettingsAdmin();
+
+    settingsMessage(
+      "Preparing Supabase backup..."
+    );
+
+    const [
+      sales,
+      inventory,
+      customers,
+      expenses,
+      stockHistory,
+      profileResult
+    ] = await Promise.all([
+      fetchAllSettingsRows("sales"),
+      fetchAllSettingsRows("inventory"),
+      fetchAllSettingsRows("customers"),
+      fetchAllSettingsRows("expenses"),
+      fetchAllSettingsRows("stock_history"),
+
+      settingsDb
+        .from("business_profile")
+        .select(
+          "name,owner,phone,email,location,currency"
+        )
+        .eq("id", 1)
+        .single()
+    ]);
+
+    if (profileResult.error) {
+      throw profileResult.error;
+    }
+
+    const backup = {
+      application: "Timidy Store",
+      version: SETTINGS_BACKUP_VERSION,
+      source: "supabase",
+      exportedAt: new Date().toISOString(),
+
+      records: {
+        sales,
+        inventory,
+        customers,
+        expenses,
+        stockHistory
+      },
+
+      settings: {
+        profile: profileResult.data,
+        theme:
+          localStorage.getItem("timidy-theme") === "dark"
+            ? "dark"
+            : "light"
+      }
+    };
 
     downloadSettingsJSON(
       backup,
@@ -366,361 +504,212 @@ function downloadSettingsBackup() {
     );
 
     settingsMessage(
-      "Backup download started. Keep the file somewhere safe."
-    );
-  } catch {
-    settingsMessage(
-      "Unable to generate the backup.",
-      "error"
-    );
-  }
-}
-
-// =====================================
-// RESTORE VALIDATION
-// =====================================
-
-function validateSettingsBackup(data) {
-  if (
-    !data ||
-    typeof data !== "object" ||
-    Array.isArray(data)
-  ) {
-    throw new Error(
-      "Invalid backup file format."
-    );
-  }
-
-  if (
-    data.application !== "Timidy Store" ||
-    data.version !== SETTINGS_BACKUP_VERSION
-  ) {
-    throw new Error(
-      "This is not a supported Timidy Store backup."
-    );
-  }
-
-  if (
-    !data.records ||
-    typeof data.records !== "object" ||
-    Array.isArray(data.records)
-  ) {
-    throw new Error(
-      "Backup records are missing."
-    );
-  }
-
-  const recordNames = [
-    "sales",
-    "inventory",
-    "customers",
-    "expenses",
-    "stockHistory"
-  ];
-
-  recordNames.forEach(name => {
-    if (!Array.isArray(data.records[name])) {
-      throw new Error(
-        `Invalid or missing ${name} records.`
-      );
-    }
-
-    if (
-      !data.records[name].every(
-        item =>
-          item !== null &&
-          typeof item === "object" &&
-          !Array.isArray(item)
-      )
-    ) {
-      throw new Error(
-        `Invalid entries in ${name} records.`
-      );
-    }
-  });
-
-  if (
-    !data.settings ||
-    typeof data.settings !== "object" ||
-    Array.isArray(data.settings)
-  ) {
-    throw new Error(
-      "Backup settings are missing."
-    );
-  }
-
-  if (
-    !data.settings.profile ||
-    typeof data.settings.profile !== "object" ||
-    Array.isArray(data.settings.profile)
-  ) {
-    throw new Error(
-      "Business profile is missing."
-    );
-  }
-
-  if (
-    !["light", "dark"].includes(
-      data.settings.theme
-    )
-  ) {
-    throw new Error(
-      "Invalid theme preference in backup."
-    );
-  }
-
-  if (
-    data.settings.profile.currency !== "TZS"
-  ) {
-    throw new Error(
-      "This backup uses an unsupported currency."
-    );
-  }
-
-  return true;
-}
-
-// =====================================
-// RESTORE
-// =====================================
-
-function restoreSettingsBackup(data) {
-  validateSettingsBackup(data);
-
-  const confirmed = confirm(
-    "Restore this Timidy Store backup?\n\n" +
-    "Your current sales, inventory, customers, " +
-    "expenses, stock history, and settings " +
-    "will be replaced.\n\n" +
-    "A safety backup will be downloaded first.\n\n" +
-    "Continue?"
-  );
-
-  if (!confirmed) return;
-
-  // Capture current data before any changes.
-  const safetyBackup = createSettingsBackup();
-
-  downloadSettingsJSON(
-    safetyBackup,
-    `Timidy-Store-Before-Restore-${settingsDateStamp()}.json`
-  );
-
-  // Prepare all values before writing.
-  const changes = {
-    [SETTINGS_KEYS.sales]:
-      JSON.stringify(data.records.sales),
-
-    [SETTINGS_KEYS.inventory]:
-      JSON.stringify(data.records.inventory),
-
-    [SETTINGS_KEYS.customers]:
-      JSON.stringify(data.records.customers),
-
-    [SETTINGS_KEYS.expenses]:
-      JSON.stringify(data.records.expenses),
-
-    [SETTINGS_KEYS.stockHistory]:
-      JSON.stringify(data.records.stockHistory),
-
-    [SETTINGS_KEYS.profile]:
-      JSON.stringify({
-        ...DEFAULT_PROFILE,
-        ...data.settings.profile,
-        currency: "TZS"
-      }),
-
-    [SETTINGS_KEYS.theme]:
-      data.settings.theme
-  };
-
-  // Keep exact previous values for rollback.
-  const previous = {};
-
-  Object.keys(changes).forEach(key => {
-    previous[key] =
-      localStorage.getItem(key);
-  });
-
-  const written = [];
-
-  try {
-    Object.entries(changes).forEach(
-      ([key, value]) => {
-        localStorage.setItem(
-          key,
-          value
-        );
-
-        written.push(key);
-      }
+      "Supabase backup downloaded successfully. " +
+      "Keep it somewhere secure."
     );
   } catch (error) {
-    // Best-effort rollback if a write fails.
-    written.reverse().forEach(key => {
-      try {
-        if (previous[key] === null) {
-          localStorage.removeItem(key);
-        } else {
-          localStorage.setItem(
-            key,
-            previous[key]
-          );
-        }
-      } catch {
-        // Browser storage may be unavailable.
-      }
-    });
-
-    throw new Error(
-      "Restore failed. Previous records were preserved where possible."
-    );
-  }
-
-  loadBusinessProfile();
-
-  settingsApplyTheme(
-    data.settings.theme
-  );
-
-  updateSettingsSystemInfo();
-
-  settingsMessage(
-    "Backup restored successfully. " +
-    "Your store records have been updated."
-  );
-}
-
-// =====================================
-// FILE IMPORT
-// =====================================
-
-async function handleSettingsRestore(event) {
-  const input = event.target;
-
-  const file = input.files?.[0];
-
-  if (!file) return;
-
-  try {
-    if (file.size > 25 * 1024 * 1024) {
-      throw new Error(
-        "Backup file is too large (maximum 25 MB)."
-      );
-    }
-
-    const text = await file.text();
-
-    const data = JSON.parse(text);
-
-    restoreSettingsBackup(data);
-  } catch (error) {
     settingsMessage(
-      error.message ||
-      "Unable to restore the backup.",
+      "Unable to generate backup: " +
+      (error.message || "Unknown error"),
       "error"
     );
   } finally {
-    input.value = "";
+    settingsBusy = false;
+    button.disabled = false;
   }
 }
 
 // =====================================
-// SYSTEM INFORMATION
+// PASSWORD CHANGE
 // =====================================
 
-function updateSettingsSystemInfo() {
-  const sales = settingsLoadArray(
-    SETTINGS_KEYS.sales
+async function changeAdminPassword(event) {
+  event.preventDefault();
+
+  const form = settingsEl(
+    "changePasswordForm"
   );
 
-  const inventory = settingsLoadArray(
-    SETTINGS_KEYS.inventory
+  const button = settingsEl(
+    "changePasswordButton"
   );
 
-  const customers = settingsLoadArray(
-    SETTINGS_KEYS.customers
+  const currentPassword =
+    settingsEl("currentPassword").value;
+
+  const newPassword =
+    settingsEl("newPassword").value;
+
+  const confirmPassword =
+    settingsEl("confirmPassword").value;
+
+  if (newPassword.length < 12) {
+    passwordMessage(
+      "Use a password with at least 12 characters.",
+      true
+    );
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    passwordMessage(
+      "New passwords do not match.",
+      true
+    );
+    return;
+  }
+
+  if (newPassword === currentPassword) {
+    passwordMessage(
+      "Choose a different password.",
+      true
+    );
+    return;
+  }
+
+  button.disabled = true;
+
+  try {
+    const user = await requireSettingsAdmin();
+
+    if (!user.email) {
+      throw new Error(
+        "No email address is linked to this account."
+      );
+    }
+
+    // Verify the existing password using
+    // Supabase Auth before changing it.
+    const { error: verifyError } =
+      await settingsDb.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword
+      });
+
+    if (verifyError) {
+      throw new Error(
+        "Current password is incorrect."
+      );
+    }
+
+    const { error: updateError } =
+      await settingsDb.auth.updateUser({
+        password: newPassword
+      });
+
+    if (updateError) throw updateError;
+
+    form.reset();
+
+    passwordMessage(
+      "Password changed successfully."
+    );
+
+    settingsMessage(
+      "Your administrator password has been updated."
+    );
+  } catch (error) {
+    passwordMessage(
+      error.message ||
+      "Unable to change password.",
+      true
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// =====================================
+// LOGOUT
+// =====================================
+
+async function logoutSettingsAdmin() {
+  const button = settingsEl(
+    "settingsLogout"
   );
 
-  const expenses = settingsLoadArray(
-    SETTINGS_KEYS.expenses
-  );
+  button.disabled = true;
 
-  const history = settingsLoadArray(
-    SETTINGS_KEYS.stockHistory
-  );
+  try {
+    const { error } =
+      await settingsDb.auth.signOut();
 
-  const voided = sales.filter(
-    sale =>
-      sale.status === "voided" ||
-      sale.voided === true
-  );
+    if (error) throw error;
 
-  settingsEl(
-    "settingsSalesCount"
-  ).textContent = sales.length;
+    window.location.replace("login.html");
+  } catch (error) {
+    settingsMessage(
+      "Unable to log out: " +
+      (error.message || "Unknown error"),
+      "error"
+    );
 
-  settingsEl(
-    "settingsInventoryCount"
-  ).textContent = inventory.length;
-
-  settingsEl(
-    "settingsCustomersCount"
-  ).textContent = customers.length;
-
-  settingsEl(
-    "settingsExpensesCount"
-  ).textContent = expenses.length;
-
-  settingsEl(
-    "settingsHistoryCount"
-  ).textContent = history.length;
-
-  settingsEl(
-    "settingsVoidedCount"
-  ).textContent = voided.length;
+    button.disabled = false;
+  }
 }
 
 // =====================================
 // INITIALIZATION
 // =====================================
 
-function initializeSettings() {
-  loadBusinessProfile();
-
+async function initializeSettings() {
   initializeSettingsTheme();
 
-  updateSettingsSystemInfo();
+  settingsEl("businessProfileForm")
+    .addEventListener(
+      "submit",
+      saveBusinessProfile
+    );
 
-  settingsEl(
-    "businessProfileForm"
-  ).addEventListener(
-    "submit",
-    saveBusinessProfile
-  );
+  settingsEl("backupData")
+    .addEventListener(
+      "click",
+      downloadSettingsBackup
+    );
 
-  settingsEl(
-    "backupData"
-  ).addEventListener(
-    "click",
-    downloadSettingsBackup
-  );
+  settingsEl("changePasswordForm")
+    .addEventListener(
+      "submit",
+      changeAdminPassword
+    );
 
-  settingsEl(
-    "restoreFile"
-  ).addEventListener(
-    "change",
-    handleSettingsRestore
-  );
+  settingsEl("settingsLogout")
+    .addEventListener(
+      "click",
+      logoutSettingsAdmin
+    );
+
+  try {
+    await requireSettingsAdmin();
+
+    await Promise.all([
+      loadBusinessProfile(),
+      updateSettingsSystemInfo()
+    ]);
+  } catch (error) {
+    console.error(error);
+
+    settingsMessage(
+      "Unable to initialize Settings: " +
+      (error.message || "Unknown error"),
+      "error"
+    );
+  }
 
   window.addEventListener(
     "pageshow",
-    updateSettingsSystemInfo
+    () => {
+      updateSettingsSystemInfo();
+    }
   );
 
-  window.addEventListener(
-    "storage",
-    updateSettingsSystemInfo
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      if (!document.hidden) {
+        updateSettingsSystemInfo();
+      }
+    }
   );
 
   if (typeof lucide !== "undefined") {
@@ -736,3 +725,4 @@ if (document.readyState === "loading") {
 } else {
   initializeSettings();
 }
+

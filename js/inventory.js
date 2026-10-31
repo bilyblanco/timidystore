@@ -1,29 +1,28 @@
 
 "use strict";
 
-const STORAGE_KEY = "timidy-inventory";
-const HISTORY_KEY = "timidy-stock-history";
+// ========================================
+// TIMIDY STORE — SUPABASE INVENTORY
+// ========================================
 
-// --------------------------------
-// STORAGE
-// --------------------------------
+const db = window.timidySupabase;
 
-function loadArray(key) {
-  try {
-    const data = JSON.parse(localStorage.getItem(key));
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
+if (!db) {
+  throw new Error("Supabase is not configured.");
 }
 
-let products = loadArray(STORAGE_KEY);
-let stockHistory = loadArray(HISTORY_KEY);
+let products = [];
+let stockHistory = [];
+let busy = false;
 
 const form = document.getElementById("productForm");
 const table = document.getElementById("inventoryTable");
 const search = document.getElementById("searchProduct");
 const themeToggle = document.getElementById("themeToggle");
+
+// ----------------------------------------
+// UTILITIES
+// ----------------------------------------
 
 function createId() {
   if (
@@ -37,40 +36,103 @@ function createId() {
 }
 
 const formatMoney = amount =>
-  "TZS " + Number(amount).toLocaleString("en-TZ", {
+  "TZS " + Number(amount || 0).toLocaleString("en-TZ", {
     maximumFractionDigits: 2
   });
 
-function saveProducts() {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(products)
-  );
+function showError(message, error) {
+  console.error(message, error);
+  alert(`${message}\n${error?.message || "Please try again."}`);
 }
 
-function saveHistory() {
-  localStorage.setItem(
-    HISTORY_KEY,
-    JSON.stringify(stockHistory)
-  );
+function setBusy(value) {
+  busy = value;
+
+  if (form) {
+    const submit = form.querySelector('[type="submit"]');
+    if (submit) submit.disabled = value;
+  }
+
+  if (table) {
+    table.querySelectorAll("button").forEach(button => {
+      button.disabled = value;
+    });
+  }
 }
 
-// --------------------------------
+function mapProduct(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    purchasePrice: Number(row.purchase_price),
+    sellingPrice: Number(row.selling_price),
+    quantity: Number(row.quantity),
+    minimumStock: Number(row.minimum_stock)
+  };
+}
+
+function mapMovement(row) {
+  return {
+    id: row.id,
+    productId: row.product_id,
+    productName: row.product_name,
+    type: row.type,
+    quantity: Number(row.quantity),
+    previousQuantity: Number(row.previous_quantity),
+    newQuantity: Number(row.new_quantity),
+    unitCost: Number(row.unit_cost),
+    note: row.note,
+    date: row.date
+  };
+}
+
+// ----------------------------------------
+// SUPABASE DATA LOADING
+// ----------------------------------------
+
+async function loadProducts() {
+  const { data, error } = await db
+    .from("inventory")
+    .select(
+      "id, name, category, purchase_price, selling_price, quantity, minimum_stock"
+    )
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+
+  products = (data || []).map(mapProduct);
+  renderProducts();
+}
+
+async function loadProductHistory(productId) {
+  const { data, error } = await db
+    .from("stock_history")
+    .select(
+      "id, product_id, product_name, type, quantity, previous_quantity, new_quantity, unit_cost, note, date"
+    )
+    .eq("product_id", productId)
+    .order("date", { ascending: false });
+
+  if (error) throw error;
+
+  stockHistory = (data || []).map(mapMovement);
+  return stockHistory;
+}
+
+// ----------------------------------------
 // STOCK STATUS
-// --------------------------------
+// ----------------------------------------
 
 function getStatus(product) {
-  if (Number(product.quantity) === 0) {
+  if (product.quantity === 0) {
     return {
       label: "Out of Stock",
       className: "middleman"
     };
   }
 
-  if (
-    Number(product.quantity) <=
-    Number(product.minimumStock)
-  ) {
+  if (product.quantity <= product.minimumStock) {
     return {
       label: "Low Stock",
       className: "middleman"
@@ -83,29 +145,24 @@ function getStatus(product) {
   };
 }
 
-// --------------------------------
+// ----------------------------------------
 // INVENTORY SUMMARY
-// --------------------------------
+// ----------------------------------------
 
 function updateSummary() {
   const totalUnits = products.reduce(
-    (sum, product) =>
-      sum + Number(product.quantity || 0),
+    (sum, product) => sum + product.quantity,
     0
   );
 
   const inventoryValue = products.reduce(
     (sum, product) =>
-      sum +
-      Number(product.quantity || 0) *
-      Number(product.purchasePrice || 0),
+      sum + product.quantity * product.purchasePrice,
     0
   );
 
   const alerts = products.filter(
-    product =>
-      Number(product.quantity) <=
-      Number(product.minimumStock)
+    product => product.quantity <= product.minimumStock
   ).length;
 
   const summary = {
@@ -121,9 +178,9 @@ function updateSummary() {
   });
 }
 
-// --------------------------------
+// ----------------------------------------
 // INVENTORY TABLE
-// --------------------------------
+// ----------------------------------------
 
 function makeActionButton(label, className, onClick) {
   const button = document.createElement("button");
@@ -131,6 +188,7 @@ function makeActionButton(label, className, onClick) {
   button.type = "button";
   button.className = `inventory-action-btn ${className}`;
   button.textContent = label;
+  button.disabled = busy;
   button.addEventListener("click", onClick);
 
   return button;
@@ -146,9 +204,7 @@ function renderProducts() {
     : "";
 
   const filtered = products.filter(product =>
-    String(product.name || "")
-      .toLowerCase()
-      .includes(term)
+    product.name.toLowerCase().includes(term)
   );
 
   if (filtered.length === 0) {
@@ -211,49 +267,20 @@ function renderProducts() {
   updateSummary();
 }
 
-// --------------------------------
-// STOCK MOVEMENTS
-// --------------------------------
-
-function recordStockMovement({
-  product,
-  type,
-  quantity,
-  previousQuantity,
-  newQuantity,
-  unitCost,
-  note
-}) {
-  stockHistory.unshift({
-    id: createId(),
-    productId: product.id,
-    productName: product.name,
-    type,
-    quantity,
-    previousQuantity,
-    newQuantity,
-    unitCost,
-    note,
-    date: new Date().toISOString()
-  });
-
-  saveHistory();
-}
-
-// --------------------------------
+// ----------------------------------------
 // ADD PRODUCT
-// --------------------------------
+// ----------------------------------------
 
-function addProduct(event) {
+async function addProduct(event) {
   event.preventDefault();
 
+  if (busy) return;
+
   const name = document
-    .getElementById("productName")
-    .value.trim();
+    .getElementById("productName").value.trim();
 
   const category = document
-    .getElementById("category")
-    .value;
+    .getElementById("category").value.trim();
 
   const purchasePriceInput = document
     .getElementById("purchasePrice").value;
@@ -299,65 +326,47 @@ function addProduct(event) {
   );
 
   if (duplicate) {
-    alert(
-      "This product already exists.\n" +
-      "Use Restock instead."
-    );
+    alert("This product already exists.\nUse Restock instead.");
     return;
   }
 
-  const product = {
-    id: createId(),
-    name,
-    category,
-    purchasePrice,
-    sellingPrice,
-    quantity,
-    minimumStock
-  };
-
-  products.push(product);
-
-  const previousHistory = [...stockHistory];
+  setBusy(true);
 
   try {
-    saveProducts();
-
-    recordStockMovement({
-      product,
-      type: "Initial Stock",
-      quantity,
-      previousQuantity: 0,
-      newQuantity: quantity,
-      unitCost: purchasePrice,
-      note: "Product created"
+    const { error } = await db.rpc("timidy_add_product", {
+      p_id: createId(),
+      p_name: name,
+      p_category: category,
+      p_purchase_price: purchasePrice,
+      p_selling_price: sellingPrice,
+      p_quantity: quantity,
+      p_minimum_stock: minimumStock,
+      p_history_id: createId()
     });
-  } catch {
-    products.pop();
-    stockHistory = previousHistory;
 
-    try {
-      saveProducts();
-      saveHistory();
-    } catch {}
+    if (error) throw error;
 
-    alert("Unable to save product.");
-    return;
+    form.reset();
+
+    document.getElementById("minimumStock").value = 3;
+
+    await loadProducts();
+
+    alert("Product added successfully!");
+  } catch (error) {
+    showError("Unable to add product.", error);
+  } finally {
+    setBusy(false);
   }
-
-  renderProducts();
-  form.reset();
-
-  document.getElementById(
-    "minimumStock"
-  ).value = 3;
 }
 
-// --------------------------------
+// ----------------------------------------
 // EDIT PRODUCT
-// --------------------------------
+// ----------------------------------------
 
-function openEditProduct(productId) {
+async function openEditProduct(productId) {
+  if (busy) return;
+
   const product = products.find(
     item => item.id === productId
   );
@@ -423,30 +432,43 @@ function openEditProduct(productId) {
     return;
   }
 
-  const previous = { ...product };
-
-  product.name = name;
-  product.category = category;
-  product.sellingPrice = sellingPrice;
-  product.minimumStock = minimumStock;
+  setBusy(true);
 
   try {
-    saveProducts();
-  } catch {
-    Object.assign(product, previous);
-    alert("Unable to save changes.");
-    return;
-  }
+    const { data, error } = await db
+      .from("inventory")
+      .update({
+        name,
+        category,
+        selling_price: sellingPrice,
+        minimum_stock: minimumStock
+      })
+      .eq("id", productId)
+      .select("id");
 
-  renderProducts();
-  alert("Product updated successfully!");
+    if (error) throw error;
+
+    if (!data || data.length !== 1) {
+      throw new Error("Product update was not confirmed.");
+    }
+
+    await loadProducts();
+
+    alert("Product updated successfully!");
+  } catch (error) {
+    showError("Unable to save changes.", error);
+  } finally {
+    setBusy(false);
+  }
 }
 
-// --------------------------------
+// ----------------------------------------
 // RESTOCK PRODUCT
-// --------------------------------
+// ----------------------------------------
 
-function openRestockProduct(productId) {
+async function openRestockProduct(productId) {
+  if (busy) return;
+
   const product = products.find(
     item => item.id === productId
   );
@@ -481,60 +503,44 @@ function openRestockProduct(productId) {
     return;
   }
 
-  const oldQuantity = Number(product.quantity);
-  const oldCost = Number(product.purchasePrice);
-
-  const newQuantity = oldQuantity + addedQuantity;
-
-  const totalValue =
-    oldQuantity * oldCost +
-    addedQuantity * newUnitCost;
-
-  const averageCost = totalValue / newQuantity;
-
-  const previous = { ...product };
-  const previousHistory = [...stockHistory];
-
-  product.quantity = newQuantity;
-  product.purchasePrice = averageCost;
+  setBusy(true);
 
   try {
-    saveProducts();
+    const { data, error } = await db.rpc(
+      "timidy_restock_product",
+      {
+        p_product_id: productId,
+        p_added_quantity: addedQuantity,
+        p_new_unit_cost: newUnitCost,
+        p_history_id: createId()
+      }
+    );
 
-    recordStockMovement({
-      product,
-      type: "Restock",
-      quantity: addedQuantity,
-      previousQuantity: oldQuantity,
-      newQuantity,
-      unitCost: newUnitCost,
-      note: "Additional stock purchased"
-    });
-  } catch {
-    Object.assign(product, previous);
-    stockHistory = previousHistory;
+    if (error) throw error;
 
-    try {
-      saveProducts();
-      saveHistory();
-    } catch {}
+    if (!Array.isArray(data) || data.length !== 1) {
+      throw new Error("Restock result was not confirmed.");
+    }
 
-    alert("Unable to save restock.");
-    return;
+    const result = data[0];
+
+    await loadProducts();
+
+    alert(
+      `Added ${addedQuantity} units successfully!\n` +
+      `New stock: ${result.new_quantity} units\n` +
+      `Average cost: ${formatMoney(result.average_cost)}`
+    );
+  } catch (error) {
+    showError("Unable to save restock.", error);
+  } finally {
+    setBusy(false);
   }
-
-  renderProducts();
-
-  alert(
-    `Added ${addedQuantity} units successfully!\n` +
-    `New stock: ${newQuantity} units\n` +
-    `Average cost: ${formatMoney(averageCost)}`
-  );
 }
 
-// --------------------------------
+// ----------------------------------------
 // STOCK HISTORY MODAL
-// --------------------------------
+// ----------------------------------------
 
 let historyModal = null;
 let lastHistoryTrigger = null;
@@ -600,22 +606,14 @@ function createHistoryModal() {
   return modal;
 }
 
-function showProductHistory(productId) {
+async function showProductHistory(productId) {
+  if (busy) return;
+
   const product = products.find(
     item => item.id === productId
   );
 
   if (!product) return;
-
-  // Reload to include sales made on another page.
-  stockHistory = loadArray(HISTORY_KEY);
-
-  const movements = stockHistory
-    .filter(item => item.productId === productId)
-    .sort(
-      (a, b) =>
-        new Date(b.date) - new Date(a.date)
-    );
 
   const modal = createHistoryModal();
 
@@ -629,15 +627,41 @@ function showProductHistory(productId) {
 
   rows.replaceChildren();
 
-  if (movements.length === 0) {
-    const row = rows.insertRow();
-    const cell = row.insertCell();
+  const loadingRow = rows.insertRow();
+  const loadingCell = loadingRow.insertCell();
+  loadingCell.colSpan = 5;
+  loadingCell.textContent = "Loading stock history...";
+  loadingCell.className = "stock-history-empty";
 
-    cell.colSpan = 5;
-    cell.textContent =
-      "No stock history recorded for this product.";
-    cell.className = "stock-history-empty";
-  } else {
+  lastHistoryTrigger = document.activeElement;
+
+  modal.hidden = false;
+  document.body.classList.add("stock-history-open");
+
+  modal.querySelector(
+    ".stock-history-close"
+  ).focus();
+
+  try {
+    const movements = await loadProductHistory(productId);
+
+    // The user may have closed the modal while data loaded.
+    if (modal.hidden) return;
+
+    rows.replaceChildren();
+
+    if (movements.length === 0) {
+      const row = rows.insertRow();
+      const cell = row.insertCell();
+
+      cell.colSpan = 5;
+      cell.textContent =
+        "No stock history recorded for this product.";
+      cell.className = "stock-history-empty";
+
+      return;
+    }
+
     movements.forEach(movement => {
       const row = rows.insertRow();
 
@@ -645,18 +669,15 @@ function showProductHistory(productId) {
         movement.date
       ).toLocaleString("en-TZ");
 
-      const quantity = Number(movement.quantity);
+      const quantity = movement.quantity;
 
       const change =
         quantity > 0
           ? `+${quantity}`
           : String(quantity);
 
-      const dateCell = row.insertCell();
-      dateCell.textContent = date;
-
-      const typeCell = row.insertCell();
-      typeCell.textContent = movement.type;
+      row.insertCell().textContent = date;
+      row.insertCell().textContent = movement.type;
 
       const changeCell = row.insertCell();
       changeCell.textContent = change;
@@ -665,26 +686,22 @@ function showProductHistory(productId) {
           ? "stock-change-negative"
           : "stock-change-positive";
 
-      const balanceCell = row.insertCell();
-      balanceCell.textContent =
-        movement.newQuantity;
-
-      const costCell = row.insertCell();
-      costCell.textContent =
+      row.insertCell().textContent = movement.newQuantity;
+      row.insertCell().textContent =
         formatMoney(movement.unitCost);
     });
+  } catch (error) {
+    console.error("Unable to load stock history:", error);
+
+    rows.replaceChildren();
+
+    const row = rows.insertRow();
+    const cell = row.insertCell();
+
+    cell.colSpan = 5;
+    cell.textContent = "Unable to load stock history.";
+    cell.className = "stock-history-empty";
   }
-
-  lastHistoryTrigger = document.activeElement;
-
-  modal.hidden = false;
-  document.body.classList.add(
-    "stock-history-open"
-  );
-
-  modal.querySelector(
-    ".stock-history-close"
-  ).focus();
 }
 
 function closeHistoryModal() {
@@ -714,9 +731,9 @@ document.addEventListener("keydown", event => {
   }
 });
 
-// --------------------------------
+// ----------------------------------------
 // THEME
-// --------------------------------
+// ----------------------------------------
 
 function applyTheme(theme) {
   const isDark = theme === "dark";
@@ -732,14 +749,13 @@ function applyTheme(theme) {
   );
 
   if (themeToggle) {
-    themeToggle.textContent =
-      isDark ? "☀️" : "🌙";
+    themeToggle.textContent = isDark ? "☀️" : "🌙";
   }
 }
 
-// --------------------------------
+// ----------------------------------------
 // INITIALIZATION
-// --------------------------------
+// ----------------------------------------
 
 if (form) {
   form.addEventListener("submit", addProduct);
@@ -767,7 +783,26 @@ if (themeToggle) {
   });
 }
 
-renderProducts();
+async function initializeInventory() {
+  setBusy(true);
+
+  try {
+    const user = await window.TimidyAuth.getAuthorizedUser();
+
+    if (!user) {
+      window.location.replace("login.html");
+      return;
+    }
+
+    await loadProducts();
+  } catch (error) {
+    showError("Unable to load inventory.", error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+initializeInventory();
 
 if (typeof lucide !== "undefined") {
   lucide.createIcons();
