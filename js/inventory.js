@@ -3,6 +3,7 @@
 
 // ========================================
 // TIMIDY STORE — SUPABASE INVENTORY
+// Optimized loading, search and rendering
 // ========================================
 
 const db = window.timidySupabase;
@@ -11,17 +12,31 @@ if (!db) {
   throw new Error("Supabase is not configured.");
 }
 
-let products = [];
-let stockHistory = [];
-let busy = false;
-
 const form = document.getElementById("productForm");
 const table = document.getElementById("inventoryTable");
 const search = document.getElementById("searchProduct");
 
-// ----------------------------------------
+let products = [];
+let productById = new Map();
+
+let busy = false;
+let initialized = false;
+let lastDataRefresh = 0;
+let refreshPromise = null;
+
+const INVENTORY_REFRESH_INTERVAL = 60 * 1000;
+
+// Search debounce timer
+let searchTimer = null;
+
+// History modal state
+let historyModal = null;
+let lastHistoryTrigger = null;
+let historyRequestId = 0;
+
+// ========================================
 // UTILITIES
-// ----------------------------------------
+// ========================================
 
 function createId() {
   if (
@@ -31,31 +46,46 @@ function createId() {
     return crypto.randomUUID();
   }
 
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return (
+    `${Date.now()}-` +
+    Math.random().toString(36).slice(2)
+  );
 }
 
 const formatMoney = amount =>
-  "TZS " + Number(amount || 0).toLocaleString("en-TZ", {
-    maximumFractionDigits: 2
-  });
+  "TZS " + Number(amount || 0).toLocaleString(
+    "en-TZ",
+    { maximumFractionDigits: 2 }
+  );
 
 function showError(message, error) {
   console.error(message, error);
-  alert(`${message}\n${error?.message || "Please try again."}`);
+
+  alert(
+    `${message}\n` +
+    (error?.message || "Please try again.")
+  );
 }
 
 function setBusy(value) {
   busy = value;
 
   if (form) {
-    const submit = form.querySelector('[type="submit"]');
-    if (submit) submit.disabled = value;
+    const submit = form.querySelector(
+      '[type="submit"]'
+    );
+
+    if (submit) {
+      submit.disabled = value;
+    }
   }
 
   if (table) {
-    table.querySelectorAll("button").forEach(button => {
-      button.disabled = value;
-    });
+    table.querySelectorAll("button").forEach(
+      button => {
+        button.disabled = value;
+      }
+    );
   }
 }
 
@@ -64,10 +94,18 @@ function mapProduct(row) {
     id: row.id,
     name: row.name,
     category: row.category,
-    purchasePrice: Number(row.purchase_price),
-    sellingPrice: Number(row.selling_price),
-    quantity: Number(row.quantity),
-    minimumStock: Number(row.minimum_stock)
+    purchasePrice: Number(
+      row.purchase_price || 0
+    ),
+    sellingPrice: Number(
+      row.selling_price || 0
+    ),
+    quantity: Number(
+      row.quantity || 0
+    ),
+    minimumStock: Number(
+      row.minimum_stock || 0
+    )
   };
 }
 
@@ -77,51 +115,102 @@ function mapMovement(row) {
     productId: row.product_id,
     productName: row.product_name,
     type: row.type,
-    quantity: Number(row.quantity),
-    previousQuantity: Number(row.previous_quantity),
-    newQuantity: Number(row.new_quantity),
-    unitCost: Number(row.unit_cost),
+    quantity: Number(row.quantity || 0),
+    previousQuantity: Number(
+      row.previous_quantity || 0
+    ),
+    newQuantity: Number(
+      row.new_quantity || 0
+    ),
+    unitCost: Number(
+      row.unit_cost || 0
+    ),
     note: row.note,
     date: row.date
   };
 }
 
-// ----------------------------------------
+// ========================================
 // SUPABASE DATA LOADING
-// ----------------------------------------
+// ========================================
+
+// Keep a single in-flight inventory fetch.
+// This avoids overlapping refresh requests.
 
 async function loadProducts() {
-  const { data, error } = await db
-    .from("inventory")
-    .select(
-      "id, name, category, purchase_price, selling_price, quantity, minimum_stock"
-    )
-    .order("name", { ascending: true });
+  if (refreshPromise) {
+    return refreshPromise;
+  }
 
-  if (error) throw error;
+  const request = (async () => {
+    const { data, error } = await db
+      .from("inventory")
+      .select(
+        "id,name,category,purchase_price," +
+        "selling_price,quantity,minimum_stock"
+      )
+      .order("name", {
+        ascending: true
+      });
 
-  products = (data || []).map(mapProduct);
-  renderProducts();
+    if (error) {
+      throw error;
+    }
+
+    const nextProducts = (
+      data || []
+    ).map(mapProduct);
+
+    // Update state only after success.
+    products = nextProducts;
+
+    productById = new Map(
+      products.map(product => [
+        product.id,
+        product
+      ])
+    );
+
+    lastDataRefresh = Date.now();
+    initialized = true;
+
+    renderProducts();
+  })();
+
+  refreshPromise = request;
+
+  try {
+    return await request;
+  } finally {
+    if (refreshPromise === request) {
+      refreshPromise = null;
+    }
+  }
 }
 
 async function loadProductHistory(productId) {
   const { data, error } = await db
     .from("stock_history")
     .select(
-      "id, product_id, product_name, type, quantity, previous_quantity, new_quantity, unit_cost, note, date"
+      "id,product_id,product_name,type," +
+      "quantity,previous_quantity,new_quantity," +
+      "unit_cost,note,date"
     )
     .eq("product_id", productId)
-    .order("date", { ascending: false });
+    .order("date", {
+      ascending: false
+    });
 
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 
-  stockHistory = (data || []).map(mapMovement);
-  return stockHistory;
+  return (data || []).map(mapMovement);
 }
 
-// ----------------------------------------
+// ========================================
 // STOCK STATUS
-// ----------------------------------------
+// ========================================
 
 function getStatus(product) {
   if (product.quantity === 0) {
@@ -131,7 +220,10 @@ function getStatus(product) {
     };
   }
 
-  if (product.quantity <= product.minimumStock) {
+  if (
+    product.quantity <=
+    product.minimumStock
+  ) {
     return {
       label: "Low Stock",
       className: "middleman"
@@ -144,51 +236,78 @@ function getStatus(product) {
   };
 }
 
-// ----------------------------------------
+// ========================================
 // INVENTORY SUMMARY
-// ----------------------------------------
+// ========================================
+
+// Calculate all summary values in one pass.
 
 function updateSummary() {
-  const totalUnits = products.reduce(
-    (sum, product) => sum + product.quantity,
-    0
-  );
+  let totalUnits = 0;
+  let inventoryValue = 0;
+  let lowStockCount = 0;
 
-  const inventoryValue = products.reduce(
-    (sum, product) =>
-      sum + product.quantity * product.purchasePrice,
-    0
-  );
+  for (const product of products) {
+    totalUnits += product.quantity;
 
-  const alerts = products.filter(
-    product => product.quantity <= product.minimumStock
-  ).length;
+    inventoryValue +=
+      product.quantity *
+      product.purchasePrice;
+
+    if (
+      product.quantity <=
+      product.minimumStock
+    ) {
+      lowStockCount++;
+    }
+  }
 
   const summary = {
     totalProducts: products.length,
     totalUnits,
-    inventoryValue: formatMoney(inventoryValue),
-    lowStockCount: alerts
+    inventoryValue: formatMoney(
+      inventoryValue
+    ),
+    lowStockCount
   };
 
-  Object.entries(summary).forEach(([id, value]) => {
-    const element = document.getElementById(id);
-    if (element) element.textContent = value;
-  });
+  Object.entries(summary).forEach(
+    ([id, value]) => {
+      const element =
+        document.getElementById(id);
+
+      if (element) {
+        element.textContent = value;
+      }
+    }
+  );
 }
 
-// ----------------------------------------
+// ========================================
 // INVENTORY TABLE
-// ----------------------------------------
+// ========================================
 
-function makeActionButton(label, className, onClick) {
-  const button = document.createElement("button");
+// Buttons use data attributes instead of
+// creating three listeners per product.
+
+function makeActionButton(
+  label,
+  className,
+  action,
+  productId
+) {
+  const button =
+    document.createElement("button");
 
   button.type = "button";
-  button.className = `inventory-action-btn ${className}`;
+
+  button.className =
+    `inventory-action-btn ${className}`;
+
   button.textContent = label;
+  button.dataset.action = action;
+  button.dataset.productId = productId;
   button.disabled = busy;
-  button.addEventListener("click", onClick);
 
   return button;
 }
@@ -196,32 +315,31 @@ function makeActionButton(label, className, onClick) {
 function renderProducts() {
   if (!table) return;
 
-  table.replaceChildren();
-
   const term = search
     ? search.value.trim().toLowerCase()
     : "";
 
-  const filtered = products.filter(product =>
-    product.name.toLowerCase().includes(term)
-  );
+  const fragment =
+    document.createDocumentFragment();
 
-  if (filtered.length === 0) {
-    const row = table.insertRow();
-    const cell = row.insertCell();
+  let matches = 0;
 
-    cell.colSpan = 7;
-    cell.textContent = "No products found.";
-    cell.style.textAlign = "center";
-    cell.style.padding = "24px";
+  for (const product of products) {
+    if (
+      term &&
+      !product.name.toLowerCase().includes(
+        term
+      )
+    ) {
+      continue;
+    }
 
-    updateSummary();
-    return;
-  }
+    matches++;
 
-  filtered.forEach(product => {
     const status = getStatus(product);
-    const row = table.insertRow();
+
+    const row =
+      document.createElement("tr");
 
     [
       product.name,
@@ -230,45 +348,130 @@ function renderProducts() {
       formatMoney(product.sellingPrice),
       product.quantity
     ].forEach(value => {
-      row.insertCell().textContent = value;
+      const cell =
+        document.createElement("td");
+
+      cell.textContent = value ?? "";
+
+      row.appendChild(cell);
     });
 
-    const statusCell = row.insertCell();
-    const badge = document.createElement("span");
+    // Stock status
+    const statusCell =
+      document.createElement("td");
 
-    badge.className = `tag ${status.className}`;
+    const badge =
+      document.createElement("span");
+
+    badge.className =
+      `tag ${status.className}`;
+
     badge.textContent = status.label;
 
     statusCell.appendChild(badge);
+    row.appendChild(statusCell);
 
-    const actionsCell = row.insertCell();
-    actionsCell.className = "inventory-actions";
+    // Action buttons
+    const actionsCell =
+      document.createElement("td");
+
+    actionsCell.className =
+      "inventory-actions";
 
     actionsCell.append(
       makeActionButton(
         "Edit",
         "edit-btn",
-        () => openEditProduct(product.id)
+        "edit",
+        product.id
       ),
       makeActionButton(
         "Restock",
         "restock-btn",
-        () => openRestockProduct(product.id)
+        "restock",
+        product.id
       ),
       makeActionButton(
         "History",
         "history-btn",
-        () => showProductHistory(product.id)
+        "history",
+        product.id
       )
     );
-  });
 
+    row.appendChild(actionsCell);
+    fragment.appendChild(row);
+  }
+
+  if (matches === 0) {
+    const row =
+      document.createElement("tr");
+
+    const cell =
+      document.createElement("td");
+
+    cell.colSpan = 7;
+    cell.textContent = "No products found.";
+    cell.style.textAlign = "center";
+    cell.style.padding = "24px";
+
+    row.appendChild(cell);
+    fragment.appendChild(row);
+  }
+
+  // One table update instead of
+  // inserting each row individually.
+  table.replaceChildren(fragment);
+
+  // Summary always covers ALL products,
+  // not just filtered search results.
   updateSummary();
 }
 
-// ----------------------------------------
+// ========================================
+// DELEGATED TABLE ACTIONS
+// ========================================
+
+if (table) {
+  table.addEventListener(
+    "click",
+    event => {
+      if (busy) return;
+
+      const button = event.target.closest(
+        "button[data-action][data-product-id]"
+      );
+
+      if (
+        !button ||
+        !table.contains(button)
+      ) {
+        return;
+      }
+
+      const productId =
+        button.dataset.productId;
+
+      switch (button.dataset.action) {
+        case "edit":
+          openEditProduct(productId);
+          break;
+
+        case "restock":
+          openRestockProduct(productId);
+          break;
+
+        case "history":
+          showProductHistory(productId);
+          break;
+      }
+    }
+  );
+}
+
+// ========================================
 // ADD PRODUCT
-// ----------------------------------------
+// ========================================
 
 async function addProduct(event) {
   event.preventDefault();
@@ -276,27 +479,40 @@ async function addProduct(event) {
   if (busy) return;
 
   const name = document
-    .getElementById("productName").value.trim();
+    .getElementById("productName")
+    .value.trim();
 
   const category = document
-    .getElementById("category").value.trim();
+    .getElementById("category")
+    .value.trim();
 
   const purchasePriceInput = document
-    .getElementById("purchasePrice").value;
+    .getElementById("purchasePrice")
+    .value;
 
   const sellingPriceInput = document
-    .getElementById("sellingPrice").value;
+    .getElementById("sellingPrice")
+    .value;
 
   const quantityInput = document
-    .getElementById("quantity").value;
+    .getElementById("quantity")
+    .value;
 
   const minimumStockInput = document
-    .getElementById("minimumStock").value;
+    .getElementById("minimumStock")
+    .value;
 
-  const purchasePrice = Number(purchasePriceInput);
-  const sellingPrice = Number(sellingPriceInput);
-  const quantity = Number(quantityInput);
-  const minimumStock = Number(minimumStockInput);
+  const purchasePrice =
+    Number(purchasePriceInput);
+
+  const sellingPrice =
+    Number(sellingPriceInput);
+
+  const quantity =
+    Number(quantityInput);
+
+  const minimumStock =
+    Number(minimumStockInput);
 
   if (
     !name ||
@@ -314,61 +530,95 @@ async function addProduct(event) {
     !Number.isInteger(minimumStock) ||
     minimumStock < 0
   ) {
-    alert("Please enter valid product details.");
+    alert(
+      "Please enter valid product details."
+    );
+
     return;
   }
+
+  const normalizedName =
+    name.toLowerCase();
 
   const duplicate = products.some(
     product =>
       product.name.trim().toLowerCase() ===
-      name.toLowerCase()
+      normalizedName
   );
 
   if (duplicate) {
-    alert("This product already exists.\nUse Restock instead.");
+    alert(
+      "This product already exists.\n" +
+      "Use Restock instead."
+    );
+
     return;
   }
 
   setBusy(true);
 
+  let committed = false;
+
   try {
-    const { error } = await db.rpc("timidy_add_product", {
-      p_id: createId(),
-      p_name: name,
-      p_category: category,
-      p_purchase_price: purchasePrice,
-      p_selling_price: sellingPrice,
-      p_quantity: quantity,
-      p_minimum_stock: minimumStock,
-      p_history_id: createId()
-    });
+    // Keep the existing atomic RPC.
+    const { error } = await db.rpc(
+      "timidy_add_product",
+      {
+        p_id: createId(),
+        p_name: name,
+        p_category: category,
+        p_purchase_price: purchasePrice,
+        p_selling_price: sellingPrice,
+        p_quantity: quantity,
+        p_minimum_stock: minimumStock,
+        p_history_id: createId()
+      }
+    );
 
     if (error) throw error;
 
+    committed = true;
+
     form.reset();
 
-    document.getElementById("minimumStock").value = 3;
+    document.getElementById(
+      "minimumStock"
+    ).value = 3;
 
     await loadProducts();
 
-    alert("Product added successfully!");
+    alert(
+      "Product added successfully!"
+    );
   } catch (error) {
-    showError("Unable to add product.", error);
+    if (committed) {
+      showError(
+        "Product was added, but inventory " +
+        "refresh failed. Reload the page " +
+        "before trying again.",
+        error
+      );
+    } else {
+      showError(
+        "Unable to confirm product addition. " +
+        "Check inventory before retrying.",
+        error
+      );
+    }
   } finally {
     setBusy(false);
   }
 }
 
-// ----------------------------------------
+// ========================================
 // EDIT PRODUCT
-// ----------------------------------------
+// ========================================
 
 async function openEditProduct(productId) {
   if (busy) return;
 
-  const product = products.find(
-    item => item.id === productId
-  );
+  const product =
+    productById.get(productId);
 
   if (!product) return;
 
@@ -402,8 +652,12 @@ async function openEditProduct(productId) {
 
   const name = nameInput.trim();
   const category = categoryInput.trim();
-  const sellingPrice = Number(priceInput);
-  const minimumStock = Number(minimumInput);
+
+  const sellingPrice =
+    Number(priceInput);
+
+  const minimumStock =
+    Number(minimumInput);
 
   if (
     !name ||
@@ -415,25 +669,37 @@ async function openEditProduct(productId) {
     !Number.isInteger(minimumStock) ||
     minimumStock < 0
   ) {
-    alert("Please enter valid product details.");
+    alert(
+      "Please enter valid product details."
+    );
+
     return;
   }
+
+  const normalizedName =
+    name.toLowerCase();
 
   const duplicate = products.some(
     item =>
       item.id !== product.id &&
       item.name.trim().toLowerCase() ===
-      name.toLowerCase()
+        normalizedName
   );
 
   if (duplicate) {
-    alert("Another product already uses that name.");
+    alert(
+      "Another product already uses that name."
+    );
+
     return;
   }
 
   setBusy(true);
 
+  let committed = false;
+
   try {
+    // Keep the existing permitted update.
     const { data, error } = await db
       .from("inventory")
       .update({
@@ -447,30 +713,44 @@ async function openEditProduct(productId) {
 
     if (error) throw error;
 
-    if (!data || data.length !== 1) {
-      throw new Error("Product update was not confirmed.");
+    if (
+      !data ||
+      data.length !== 1
+    ) {
+      throw new Error(
+        "Product update was not confirmed."
+      );
     }
+
+    committed = true;
 
     await loadProducts();
 
-    alert("Product updated successfully!");
+    alert(
+      "Product updated successfully!"
+    );
   } catch (error) {
-    showError("Unable to save changes.", error);
+    showError(
+      committed
+        ? "Product updated, but refresh failed. " +
+          "Reload the page."
+        : "Unable to confirm product changes.",
+      error
+    );
   } finally {
     setBusy(false);
   }
 }
 
-// ----------------------------------------
+// ========================================
 // RESTOCK PRODUCT
-// ----------------------------------------
+// ========================================
 
 async function openRestockProduct(productId) {
   if (busy) return;
 
-  const product = products.find(
-    item => item.id === productId
-  );
+  const product =
+    productById.get(productId);
 
   if (!product) return;
 
@@ -487,8 +767,11 @@ async function openRestockProduct(productId) {
 
   if (costInput === null) return;
 
-  const addedQuantity = Number(quantityInput);
-  const newUnitCost = Number(costInput);
+  const addedQuantity =
+    Number(quantityInput);
+
+  const newUnitCost =
+    Number(costInput);
 
   if (
     quantityInput.trim() === "" ||
@@ -498,13 +781,20 @@ async function openRestockProduct(productId) {
     !Number.isFinite(newUnitCost) ||
     newUnitCost < 0
   ) {
-    alert("Enter a valid quantity and purchase cost.");
+    alert(
+      "Enter a valid quantity and purchase cost."
+    );
+
     return;
   }
 
   setBusy(true);
 
+  let committed = false;
+  let result = null;
+
   try {
+    // Keep the existing atomic RPC.
     const { data, error } = await db.rpc(
       "timidy_restock_product",
       {
@@ -517,11 +807,17 @@ async function openRestockProduct(productId) {
 
     if (error) throw error;
 
-    if (!Array.isArray(data) || data.length !== 1) {
-      throw new Error("Restock result was not confirmed.");
+    if (
+      !Array.isArray(data) ||
+      data.length !== 1
+    ) {
+      throw new Error(
+        "Restock result was not confirmed."
+      );
     }
 
-    const result = data[0];
+    result = data[0];
+    committed = true;
 
     await loadProducts();
 
@@ -531,24 +827,34 @@ async function openRestockProduct(productId) {
       `Average cost: ${formatMoney(result.average_cost)}`
     );
   } catch (error) {
-    showError("Unable to save restock.", error);
+    showError(
+      committed
+        ? "Restock saved, but refresh failed. " +
+          "Reload the page before restocking again."
+        : "Unable to confirm restock. " +
+          "Check inventory before retrying.",
+      error
+    );
   } finally {
     setBusy(false);
   }
 }
 
-// ----------------------------------------
+// ========================================
 // STOCK HISTORY MODAL
-// ----------------------------------------
-
-let historyModal = null;
-let lastHistoryTrigger = null;
+// ========================================
 
 function createHistoryModal() {
-  if (historyModal) return historyModal;
+  if (historyModal) {
+    return historyModal;
+  }
 
-  const modal = document.createElement("div");
-  modal.className = "stock-history-overlay";
+  const modal =
+    document.createElement("div");
+
+  modal.className =
+    "stock-history-overlay";
+
   modal.hidden = true;
 
   modal.innerHTML = `
@@ -561,7 +867,9 @@ function createHistoryModal() {
     >
       <div class="stock-history-header">
         <div>
-          <h2 id="stockHistoryTitle">Stock History</h2>
+          <h2 id="stockHistoryTitle">
+            Stock History
+          </h2>
           <p id="stockHistoryProduct"></p>
         </div>
 
@@ -593,28 +901,50 @@ function createHistoryModal() {
 
   modal.querySelector(
     ".stock-history-close"
-  ).addEventListener("click", closeHistoryModal);
+  ).addEventListener(
+    "click",
+    closeHistoryModal
+  );
 
-  modal.addEventListener("click", event => {
-    if (event.target === modal) {
-      closeHistoryModal();
+  modal.addEventListener(
+    "click",
+    event => {
+      if (event.target === modal) {
+        closeHistoryModal();
+      }
     }
-  });
+  );
 
   historyModal = modal;
+
   return modal;
+}
+
+function showHistoryMessage(rows, text) {
+  rows.replaceChildren();
+
+  const row = rows.insertRow();
+  const cell = row.insertCell();
+
+  cell.colSpan = 5;
+  cell.textContent = text;
+  cell.className =
+    "stock-history-empty";
 }
 
 async function showProductHistory(productId) {
   if (busy) return;
 
-  const product = products.find(
-    item => item.id === productId
-  );
+  const product =
+    productById.get(productId);
 
   if (!product) return;
 
-  const modal = createHistoryModal();
+  const modal =
+    createHistoryModal();
+
+  const requestId =
+    ++historyRequestId;
 
   modal.querySelector(
     "#stockHistoryProduct"
@@ -624,87 +954,142 @@ async function showProductHistory(productId) {
     "#stockHistoryRows"
   );
 
-  rows.replaceChildren();
+  showHistoryMessage(
+    rows,
+    "Loading stock history..."
+  );
 
-  const loadingRow = rows.insertRow();
-  const loadingCell = loadingRow.insertCell();
-  loadingCell.colSpan = 5;
-  loadingCell.textContent = "Loading stock history...";
-  loadingCell.className = "stock-history-empty";
-
-  lastHistoryTrigger = document.activeElement;
+  lastHistoryTrigger =
+    document.activeElement;
 
   modal.hidden = false;
-  document.body.classList.add("stock-history-open");
+
+  document.body.classList.add(
+    "stock-history-open"
+  );
 
   modal.querySelector(
     ".stock-history-close"
   ).focus();
 
   try {
-    const movements = await loadProductHistory(productId);
+    const movements =
+      await loadProductHistory(productId);
 
-    // The user may have closed the modal while data loaded.
-    if (modal.hidden) return;
-
-    rows.replaceChildren();
+    // Ignore outdated requests if the
+    // modal was closed or another product
+    // was selected during loading.
+    if (
+      modal.hidden ||
+      requestId !== historyRequestId
+    ) {
+      return;
+    }
 
     if (movements.length === 0) {
-      const row = rows.insertRow();
-      const cell = row.insertCell();
-
-      cell.colSpan = 5;
-      cell.textContent =
-        "No stock history recorded for this product.";
-      cell.className = "stock-history-empty";
+      showHistoryMessage(
+        rows,
+        "No stock history recorded for this product."
+      );
 
       return;
     }
 
+    const fragment =
+      document.createDocumentFragment();
+
     movements.forEach(movement => {
-      const row = rows.insertRow();
+      const row =
+        document.createElement("tr");
 
       const date = new Date(
         movement.date
       ).toLocaleString("en-TZ");
 
-      const quantity = movement.quantity;
+      const quantity =
+        movement.quantity;
 
       const change =
         quantity > 0
           ? `+${quantity}`
           : String(quantity);
 
-      row.insertCell().textContent = date;
-      row.insertCell().textContent = movement.type;
+      const dateCell =
+        document.createElement("td");
 
-      const changeCell = row.insertCell();
+      dateCell.textContent = date;
+
+      const typeCell =
+        document.createElement("td");
+
+      typeCell.textContent =
+        movement.type || "";
+
+      const changeCell =
+        document.createElement("td");
+
       changeCell.textContent = change;
+
       changeCell.className =
         quantity < 0
           ? "stock-change-negative"
           : "stock-change-positive";
 
-      row.insertCell().textContent = movement.newQuantity;
-      row.insertCell().textContent =
+      const balanceCell =
+        document.createElement("td");
+
+      balanceCell.textContent =
+        movement.newQuantity;
+
+      const costCell =
+        document.createElement("td");
+
+      costCell.textContent =
         formatMoney(movement.unitCost);
+
+      row.append(
+        dateCell,
+        typeCell,
+        changeCell,
+        balanceCell,
+        costCell
+      );
+
+      fragment.appendChild(row);
     });
+
+    rows.replaceChildren(fragment);
   } catch (error) {
-    console.error("Unable to load stock history:", error);
+    if (
+      modal.hidden ||
+      requestId !== historyRequestId
+    ) {
+      return;
+    }
 
-    rows.replaceChildren();
+    console.error(
+      "Unable to load stock history:",
+      error
+    );
 
-    const row = rows.insertRow();
-    const cell = row.insertCell();
-
-    cell.colSpan = 5;
-    cell.textContent = "Unable to load stock history.";
-    cell.className = "stock-history-empty";
+    showHistoryMessage(
+      rows,
+      "Unable to load stock history."
+    );
   }
 }
 
 function closeHistoryModal() {
-  if (!historyModal || historyModal.hidden) return;
+  if (
+    !historyModal ||
+    historyModal.hidden
+  ) {
+    return;
+  }
+
+  // Invalidate any outstanding history
+  // request for the closed modal.
+  historyRequestId++;
 
   historyModal.hidden = true;
 
@@ -714,54 +1099,144 @@ function closeHistoryModal() {
 
   if (
     lastHistoryTrigger &&
-    typeof lastHistoryTrigger.focus === "function"
+    typeof lastHistoryTrigger.focus ===
+      "function"
   ) {
     lastHistoryTrigger.focus();
   }
 }
 
-document.addEventListener("keydown", event => {
-  if (
-    event.key === "Escape" &&
-    historyModal &&
-    !historyModal.hidden
-  ) {
-    closeHistoryModal();
+document.addEventListener(
+  "keydown",
+  event => {
+    if (
+      event.key === "Escape" &&
+      historyModal &&
+      !historyModal.hidden
+    ) {
+      closeHistoryModal();
+    }
   }
-});
+);
 
-// ----------------------------------------
-// INITIALIZATION
-// ----------------------------------------
-
-if (form) {
-  form.addEventListener("submit", addProduct);
-}
+// ========================================
+// SEARCH — DEBOUNCED
+// ========================================
 
 if (search) {
-  search.addEventListener("input", renderProducts);
+  search.addEventListener(
+    "input",
+    () => {
+      clearTimeout(searchTimer);
+
+      searchTimer = setTimeout(
+        renderProducts,
+        150
+      );
+    }
+  );
 }
+
+// ========================================
+// FORM EVENTS
+// ========================================
+
+if (form) {
+  form.addEventListener(
+    "submit",
+    addProduct
+  );
+}
+
+// ========================================
+// INITIALIZATION
+// ========================================
 
 async function initializeInventory() {
   setBusy(true);
 
   try {
-    const user = await window.TimidyAuth.getAuthorizedUser();
+    const user =
+      await window.TimidyAuth.getAuthorizedUser();
 
     if (!user) {
-      window.location.replace("login.html");
+      window.location.replace(
+        "login.html"
+      );
+
       return;
     }
 
     await loadProducts();
   } catch (error) {
-    showError("Unable to load inventory.", error);
+    showError(
+      "Unable to load inventory.",
+      error
+    );
   } finally {
     setBusy(false);
   }
 }
 
 initializeInventory();
+
+// ========================================
+// REFRESH WHEN RETURNING TO TAB
+// ========================================
+
+// Don't reload on every quick tab switch.
+// Refresh when the data is over 60 seconds
+// old, keeping inventory reasonably fresh.
+
+document.addEventListener(
+  "visibilitychange",
+  async () => {
+    if (
+      document.hidden ||
+      !initialized ||
+      busy
+    ) {
+      return;
+    }
+
+    const age =
+      Date.now() - lastDataRefresh;
+
+    if (
+      age < INVENTORY_REFRESH_INTERVAL
+    ) {
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const user =
+        await window.TimidyAuth.getAuthorizedUser();
+
+      if (!user) {
+        window.location.replace(
+          "login.html"
+        );
+
+        return;
+      }
+
+      await loadProducts();
+    } catch (error) {
+      console.error(
+        "Inventory background refresh failed:",
+        error
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+);
+
+// ========================================
+// ICONS
+// ========================================
 
 if (typeof lucide !== "undefined") {
   lucide.createIcons();

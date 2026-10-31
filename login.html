@@ -3,8 +3,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1.0">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
 
   <title>Admin Login | Timidy Store</title>
 
@@ -30,7 +33,7 @@
       background: white;
       padding: 38px 30px;
       border-radius: 18px;
-      box-shadow: 0 12px 40px rgba(0,0,0,.08);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, .08);
     }
 
     .brand {
@@ -72,7 +75,7 @@
       margin-bottom: 20px;
     }
 
-    input:focus {
+    input:focus-visible {
       outline: 2px solid #2563eb;
       outline-offset: 1px;
     }
@@ -89,7 +92,7 @@
       cursor: pointer;
     }
 
-    button:hover {
+    button:hover:not(:disabled) {
       background: #293b59;
     }
 
@@ -120,8 +123,12 @@
   <main class="login-card">
 
     <div class="brand">
-      <img src="images/company-logo.png"
-           alt="Timidy Store logo">
+      <img
+        src="images/company-logo.png"
+        alt="Timidy Store logo"
+        width="72"
+        height="72"
+      >
 
       <h1>Timidy Store</h1>
 
@@ -132,7 +139,10 @@
 
     <form id="loginForm">
 
-      <label for="email">Email Address</label>
+      <label for="email">
+        Email Address
+      </label>
+
       <input
         type="email"
         id="email"
@@ -140,7 +150,10 @@
         required
       >
 
-      <label for="password">Password</label>
+      <label for="password">
+        Password
+      </label>
+
       <input
         type="password"
         id="password"
@@ -148,14 +161,19 @@
         required
       >
 
-      <button type="submit" id="loginButton">
+      <button
+        type="submit"
+        id="loginButton"
+      >
         Sign In
       </button>
 
-      <p class="message"
-         id="loginMessage"
-         role="alert"
-         aria-live="polite"></p>
+      <p
+        class="message"
+        id="loginMessage"
+        role="alert"
+        aria-live="polite"
+      ></p>
 
     </form>
 
@@ -172,46 +190,146 @@
   <script>
     "use strict";
 
-    const form = document.getElementById("loginForm");
-    const button = document.getElementById("loginButton");
-    const message = document.getElementById("loginMessage");
+    // =====================================
+    // TIMIDY STORE — ADMIN LOGIN
+    // =====================================
 
-    // Redirect already-authorized administrators.
-    (async () => {
+    const loginForm =
+      document.getElementById("loginForm");
+
+    const loginButton =
+      document.getElementById("loginButton");
+
+    const loginMessage =
+      document.getElementById("loginMessage");
+
+    const emailInput =
+      document.getElementById("email");
+
+    const passwordInput =
+      document.getElementById("password");
+
+    let loginBusy = false;
+    let redirecting = false;
+
+    // =====================================
+    // UI HELPERS
+    // =====================================
+
+    function setLoginBusy(value) {
+      loginBusy = value;
+
+      loginButton.disabled = value;
+
+      loginButton.textContent = value
+        ? "Signing in..."
+        : "Sign In";
+    }
+
+    function showLoginError(text) {
+      loginMessage.textContent = text;
+    }
+
+    function goToDashboard() {
+      if (redirecting) return;
+
+      redirecting = true;
+
+      window.location.replace(
+        "index.html"
+      );
+    }
+
+    // =====================================
+    // EXISTING SESSION
+    // =====================================
+
+    async function checkExistingSession() {
       try {
-        const user = await TimidyAuth.getAuthorizedUser();
+        const user =
+          await window.TimidyAuth
+            .getAuthorizedUser();
 
         if (user) {
-          window.location.replace("index.html");
+          goToDashboard();
         }
       } catch (error) {
-        console.error(error);
+        // An existing session could not
+        // be verified. Keep the login
+        // form available for a fresh sign-in.
+        console.error(
+          "Session verification failed:",
+          error
+        );
       }
-    })();
+    }
 
-    form.addEventListener("submit", async event => {
+    // =====================================
+    // SIGN IN
+    // =====================================
+
+    async function handleLogin(event) {
       event.preventDefault();
 
-      button.disabled = true;
-      button.textContent = "Signing in...";
-      message.textContent = "";
+      if (loginBusy || redirecting) {
+        return;
+      }
+
+      const email =
+        emailInput.value.trim();
+
+      const password =
+        passwordInput.value;
+
+      if (!email || !password) {
+        showLoginError(
+          "Enter your email and password."
+        );
+
+        return;
+      }
+
+      setLoginBusy(true);
+      showLoginError("");
 
       try {
-        const email =
-          document.getElementById("email").value.trim();
+        await window.TimidyAuth.login(
+          email,
+          password
+        );
 
-        const password =
-          document.getElementById("password").value;
-
-        await TimidyAuth.login(email, password);
-
-        window.location.replace("index.html");
+        goToDashboard();
       } catch (error) {
-        message.textContent = error.message;
-        button.disabled = false;
-        button.textContent = "Sign In";
+        console.error(
+          "Administrator sign-in failed:",
+          error
+        );
+
+        // Avoid exposing internal
+        // database or authorization
+        // implementation details.
+        showLoginError(
+          "Unable to sign in. Check your " +
+          "credentials and administrator access."
+        );
+
+        passwordInput.value = "";
+
+        setLoginBusy(false);
       }
-    });
+    }
+
+    // =====================================
+    // EVENTS
+    // =====================================
+
+    loginForm.addEventListener(
+      "submit",
+      handleLogin
+    );
+
+    // Start session check once.
+    checkExistingSession();
   </script>
 
 </body>

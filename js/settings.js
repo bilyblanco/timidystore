@@ -3,6 +3,7 @@
 
 // =====================================
 // TIMIDY STORE — SUPABASE SETTINGS
+// Optimized Settings Module
 // =====================================
 
 const settingsDb = window.timidySupabase;
@@ -15,6 +16,7 @@ const settingsEl = id =>
   document.getElementById(id);
 
 const SETTINGS_BACKUP_VERSION = 2;
+const SETTINGS_REFRESH_INTERVAL = 60 * 1000;
 
 const DEFAULT_PROFILE = {
   name: "Timidy Store",
@@ -30,16 +32,28 @@ let currentProfile = {
 };
 
 let settingsBusy = false;
+let passwordBusy = false;
+let settingsInitialized = false;
+
+let lastSystemInfoRefresh = 0;
+let systemInfoPromise = null;
+let profileLoadPromise = null;
 
 // =====================================
-// MESSAGES
+// HELPERS
 // =====================================
+
+function settingsErrorText(error) {
+  return error?.message || "Unknown error";
+}
 
 function settingsMessage(
   text,
   type = "success"
 ) {
-  const message = settingsEl("settingsMessage");
+  const message = settingsEl(
+    "settingsMessage"
+  );
 
   if (!message) return;
 
@@ -53,14 +67,37 @@ function passwordMessage(
   text,
   isError = false
 ) {
-  const message = settingsEl("passwordMessage");
+  const message = settingsEl(
+    "passwordMessage"
+  );
 
   if (!message) return;
 
   message.textContent = text;
+
   message.style.color = isError
     ? "#dc2626"
     : "#16a34a";
+}
+
+function setSettingsBusy(value) {
+  settingsBusy = value;
+
+  const profileButton = settingsEl(
+    "businessProfileForm"
+  )?.querySelector('[type="submit"]');
+
+  const backupButton = settingsEl(
+    "backupData"
+  );
+
+  if (profileButton) {
+    profileButton.disabled = value;
+  }
+
+  if (backupButton) {
+    backupButton.disabled = value;
+  }
 }
 
 // =====================================
@@ -72,8 +109,13 @@ async function requireSettingsAdmin() {
     await window.TimidyAuth.getAuthorizedUser();
 
   if (!user) {
-    window.location.replace("login.html");
-    throw new Error("Administrator session expired.");
+    window.location.replace(
+      "login.html"
+    );
+
+    throw new Error(
+      "Administrator session expired."
+    );
   }
 
   return user;
@@ -99,28 +141,55 @@ function populateBusinessProfile(profile) {
   settingsEl("businessLocation").value =
     profile.location || "";
 
-  settingsEl("businessCurrency").value = "TZS";
+  // Timidy Store operates in TZS.
+  settingsEl("businessCurrency").value =
+    "TZS";
 }
+
+// Deduplicate overlapping profile reads.
 
 async function loadBusinessProfile() {
-  const { data, error } = await settingsDb
-    .from("business_profile")
-    .select(
-      "id,name,owner,phone,email,location,currency"
-    )
-    .eq("id", 1)
-    .single();
+  if (profileLoadPromise) {
+    return profileLoadPromise;
+  }
 
-  if (error) throw error;
+  const request = (async () => {
+    const { data, error } =
+      await settingsDb
+        .from("business_profile")
+        .select(
+          "id,name,owner,phone,email,location,currency"
+        )
+        .eq("id", 1)
+        .single();
 
-  currentProfile = {
-    ...DEFAULT_PROFILE,
-    ...data,
-    currency: "TZS"
-  };
+    if (error) throw error;
 
-  populateBusinessProfile(currentProfile);
+    currentProfile = {
+      ...DEFAULT_PROFILE,
+      ...data,
+      currency: "TZS"
+    };
+
+    populateBusinessProfile(
+      currentProfile
+    );
+  })();
+
+  profileLoadPromise = request;
+
+  try {
+    return await request;
+  } finally {
+    if (profileLoadPromise === request) {
+      profileLoadPromise = null;
+    }
+  }
 }
+
+// =====================================
+// SAVE BUSINESS PROFILE
+// =====================================
 
 async function saveBusinessProfile(event) {
   event.preventDefault();
@@ -128,13 +197,30 @@ async function saveBusinessProfile(event) {
   if (settingsBusy) return;
 
   const profile = {
-    name: settingsEl("businessName").value.trim(),
-    owner: settingsEl("businessOwner").value.trim(),
-    phone: settingsEl("businessPhone").value.trim(),
-    email: settingsEl("businessEmail").value.trim(),
-    location: settingsEl("businessLocation").value.trim(),
+    name: settingsEl(
+      "businessName"
+    ).value.trim(),
+
+    owner: settingsEl(
+      "businessOwner"
+    ).value.trim(),
+
+    phone: settingsEl(
+      "businessPhone"
+    ).value.trim(),
+
+    email: settingsEl(
+      "businessEmail"
+    ).value.trim(),
+
+    location: settingsEl(
+      "businessLocation"
+    ).value.trim(),
+
     currency: "TZS",
-    updated_at: new Date().toISOString()
+
+    updated_at:
+      new Date().toISOString()
   };
 
   if (!profile.name || !profile.owner) {
@@ -142,54 +228,64 @@ async function saveBusinessProfile(event) {
       "Business name and owner are required.",
       "error"
     );
+
     return;
   }
 
-  settingsBusy = true;
+  setSettingsBusy(true);
 
-  const button = settingsEl(
-    "businessProfileForm"
-  ).querySelector('[type="submit"]');
-
-  button.disabled = true;
+  let committed = false;
 
   try {
     await requireSettingsAdmin();
 
-    const { data, error } = await settingsDb
-      .from("business_profile")
-      .update(profile)
-      .eq("id", 1)
-      .select(
-        "id,name,owner,phone,email,location,currency"
-      )
-      .single();
+    const { data, error } =
+      await settingsDb
+        .from("business_profile")
+        .update(profile)
+        .eq("id", 1)
+        .select(
+          "id,name,owner,phone,email,location,currency"
+        )
+        .single();
 
     if (error) throw error;
 
+    committed = true;
+
     currentProfile = {
       ...DEFAULT_PROFILE,
-      ...data
+      ...data,
+      currency: "TZS"
     };
 
     settingsMessage(
       "Business profile saved to Supabase successfully."
     );
   } catch (error) {
+    console.error(
+      "Unable to save business profile:",
+      error
+    );
+
     settingsMessage(
-      "Unable to save business profile: " +
-      (error.message || "Unknown error"),
+      committed
+        ? "Business profile was saved, " +
+          "but the page could not finish updating."
+        : "Unable to confirm business profile save: " +
+          settingsErrorText(error),
       "error"
     );
   } finally {
-    settingsBusy = false;
-    button.disabled = false;
+    setSettingsBusy(false);
   }
 }
 
 // =====================================
 // DATABASE PAGINATION
 // =====================================
+
+// Preserved for complete JSON backups.
 
 async function fetchAllSettingsRows(
   table,
@@ -201,22 +297,29 @@ async function fetchAllSettingsRows(
   let start = 0;
 
   while (true) {
-    const { data, error } = await settingsDb
-      .from(table)
-      .select(columns)
-      .order("id", { ascending: true })
-      .range(
-        start,
-        start + pageSize - 1
-      );
+    const { data, error } =
+      await settingsDb
+        .from(table)
+        .select(columns)
+        .order("id", {
+          ascending: true
+        })
+        .range(
+          start,
+          start + pageSize - 1
+        );
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     const rows = data || [];
 
     result.push(...rows);
 
-    if (rows.length < pageSize) break;
+    if (rows.length < pageSize) {
+      break;
+    }
 
     start += pageSize;
   }
@@ -228,8 +331,29 @@ async function fetchAllSettingsRows(
 // SYSTEM INFORMATION
 // =====================================
 
-async function updateSettingsSystemInfo() {
-  try {
+// Count-only queries avoid downloading
+// entire tables.
+//
+// A successful result is cached for
+// 60 seconds when revisiting the tab.
+
+async function updateSettingsSystemInfo(
+  force = false
+) {
+  if (systemInfoPromise) {
+    return systemInfoPromise;
+  }
+
+  if (
+    !force &&
+    settingsInitialized &&
+    Date.now() - lastSystemInfoRefresh <
+      SETTINGS_REFRESH_INTERVAL
+  ) {
+    return;
+  }
+
+  const request = (async () => {
     await requireSettingsAdmin();
 
     const [
@@ -297,7 +421,9 @@ async function updateSettingsSystemInfo() {
       result => result.error
     );
 
-    if (failed) throw failed.error;
+    if (failed) {
+      throw failed.error;
+    }
 
     const ids = [
       "settingsSalesCount",
@@ -308,24 +434,52 @@ async function updateSettingsSystemInfo() {
       "settingsVoidedCount"
     ];
 
-    results.forEach((result, index) => {
-      settingsEl(ids[index]).textContent =
-        Number(result.count || 0)
-          .toLocaleString("en-TZ");
-    });
+    results.forEach(
+      (result, index) => {
+        const target = settingsEl(
+          ids[index]
+        );
+
+        if (target) {
+          target.textContent =
+            Number(result.count || 0)
+              .toLocaleString("en-TZ");
+        }
+      }
+    );
+
+    lastSystemInfoRefresh = Date.now();
+  })();
+
+  systemInfoPromise = request;
+
+  try {
+    return await request;
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Unable to load system information:",
+      error
+    );
 
     settingsMessage(
       "Unable to load system information: " +
-      (error.message || "Unknown error"),
+      settingsErrorText(error),
       "error"
     );
+
+    // Propagate to initialization,
+    // but avoid unhandled errors in
+    // tab-visibility listeners.
+    throw error;
+  } finally {
+    if (systemInfoPromise === request) {
+      systemInfoPromise = null;
+    }
   }
 }
 
 // =====================================
-// BACKUP DOWNLOAD
+// BACKUP HELPERS
 // =====================================
 
 function settingsDateStamp() {
@@ -334,26 +488,44 @@ function settingsDateStamp() {
   return (
     date.getFullYear() +
     "-" +
-    String(date.getMonth() + 1).padStart(2, "0") +
+    String(
+      date.getMonth() + 1
+    ).padStart(2, "0") +
     "-" +
-    String(date.getDate()).padStart(2, "0")
+    String(
+      date.getDate()
+    ).padStart(2, "0")
   );
 }
 
-function downloadSettingsJSON(data, filename) {
+function downloadSettingsJSON(
+  data,
+  filename
+) {
   const blob = new Blob(
-    [JSON.stringify(data, null, 2)],
-    { type: "application/json" }
+    [
+      JSON.stringify(
+        data,
+        null,
+        2
+      )
+    ],
+    {
+      type: "application/json"
+    }
   );
 
-  const url = URL.createObjectURL(blob);
+  const url =
+    URL.createObjectURL(blob);
 
-  const anchor = document.createElement("a");
+  const anchor =
+    document.createElement("a");
 
   anchor.href = url;
   anchor.download = filename;
 
   document.body.appendChild(anchor);
+
   anchor.click();
   anchor.remove();
 
@@ -363,13 +535,17 @@ function downloadSettingsJSON(data, filename) {
   );
 }
 
+// =====================================
+// BACKUP DOWNLOAD
+// =====================================
+
+// Keeps the existing backup structure
+// and full pagination.
+
 async function downloadSettingsBackup() {
   if (settingsBusy) return;
 
-  settingsBusy = true;
-
-  const button = settingsEl("backupData");
-  button.disabled = true;
+  setSettingsBusy(true);
 
   try {
     await requireSettingsAdmin();
@@ -386,11 +562,25 @@ async function downloadSettingsBackup() {
       stockHistory,
       profileResult
     ] = await Promise.all([
-      fetchAllSettingsRows("sales"),
-      fetchAllSettingsRows("inventory"),
-      fetchAllSettingsRows("customers"),
-      fetchAllSettingsRows("expenses"),
-      fetchAllSettingsRows("stock_history"),
+      fetchAllSettingsRows(
+        "sales"
+      ),
+
+      fetchAllSettingsRows(
+        "inventory"
+      ),
+
+      fetchAllSettingsRows(
+        "customers"
+      ),
+
+      fetchAllSettingsRows(
+        "expenses"
+      ),
+
+      fetchAllSettingsRows(
+        "stock_history"
+      ),
 
       settingsDb
         .from("business_profile")
@@ -409,7 +599,8 @@ async function downloadSettingsBackup() {
       application: "Timidy Store",
       version: SETTINGS_BACKUP_VERSION,
       source: "supabase",
-      exportedAt: new Date().toISOString(),
+      exportedAt:
+        new Date().toISOString(),
 
       records: {
         sales,
@@ -434,14 +625,18 @@ async function downloadSettingsBackup() {
       "Keep it somewhere secure."
     );
   } catch (error) {
+    console.error(
+      "Unable to generate backup:",
+      error
+    );
+
     settingsMessage(
       "Unable to generate backup: " +
-      (error.message || "Unknown error"),
+      settingsErrorText(error),
       "error"
     );
   } finally {
-    settingsBusy = false;
-    button.disabled = false;
+    setSettingsBusy(false);
   }
 }
 
@@ -452,6 +647,10 @@ async function downloadSettingsBackup() {
 async function changeAdminPassword(event) {
   event.preventDefault();
 
+  if (passwordBusy || settingsBusy) {
+    return;
+  }
+
   const form = settingsEl(
     "changePasswordForm"
   );
@@ -461,19 +660,26 @@ async function changeAdminPassword(event) {
   );
 
   const currentPassword =
-    settingsEl("currentPassword").value;
+    settingsEl(
+      "currentPassword"
+    ).value;
 
   const newPassword =
-    settingsEl("newPassword").value;
+    settingsEl(
+      "newPassword"
+    ).value;
 
   const confirmPassword =
-    settingsEl("confirmPassword").value;
+    settingsEl(
+      "confirmPassword"
+    ).value;
 
   if (newPassword.length < 12) {
     passwordMessage(
       "Use a password with at least 12 characters.",
       true
     );
+
     return;
   }
 
@@ -482,6 +688,7 @@ async function changeAdminPassword(event) {
       "New passwords do not match.",
       true
     );
+
     return;
   }
 
@@ -490,13 +697,16 @@ async function changeAdminPassword(event) {
       "Choose a different password.",
       true
     );
+
     return;
   }
 
+  passwordBusy = true;
   button.disabled = true;
 
   try {
-    const user = await requireSettingsAdmin();
+    const user =
+      await requireSettingsAdmin();
 
     if (!user.email) {
       throw new Error(
@@ -504,13 +714,13 @@ async function changeAdminPassword(event) {
       );
     }
 
-    // Verify the existing password using
-    // Supabase Auth before changing it.
+    // Verify the current password.
     const { error: verifyError } =
-      await settingsDb.auth.signInWithPassword({
-        email: user.email,
-        password: currentPassword
-      });
+      await settingsDb.auth
+        .signInWithPassword({
+          email: user.email,
+          password: currentPassword
+        });
 
     if (verifyError) {
       throw new Error(
@@ -518,12 +728,21 @@ async function changeAdminPassword(event) {
       );
     }
 
+    // Update the authenticated account.
     const { error: updateError } =
-      await settingsDb.auth.updateUser({
-        password: newPassword
-      });
+      await settingsDb.auth
+        .updateUser({
+          password: newPassword
+        });
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      throw updateError;
+    }
+
+    // Clear cached authorization after
+    // changing authentication credentials.
+    window.TimidyAuth
+      .clearAuthorizationCache?.();
 
     form.reset();
 
@@ -535,12 +754,17 @@ async function changeAdminPassword(event) {
       "Your administrator password has been updated."
     );
   } catch (error) {
+    console.error(
+      "Unable to change password:",
+      error
+    );
+
     passwordMessage(
-      error.message ||
-      "Unable to change password.",
+      settingsErrorText(error),
       true
     );
   } finally {
+    passwordBusy = false;
     button.disabled = false;
   }
 }
@@ -550,6 +774,10 @@ async function changeAdminPassword(event) {
 // =====================================
 
 async function logoutSettingsAdmin() {
+  if (settingsBusy || passwordBusy) {
+    return;
+  }
+
   const button = settingsEl(
     "settingsLogout"
   );
@@ -557,16 +785,18 @@ async function logoutSettingsAdmin() {
   button.disabled = true;
 
   try {
-    const { error } =
-      await settingsDb.auth.signOut();
-
-    if (error) throw error;
-
-    window.location.replace("login.html");
+    // Use the shared auth module so
+    // authorization cache is cleared.
+    await window.TimidyAuth.logout();
   } catch (error) {
+    console.error(
+      "Unable to log out:",
+      error
+    );
+
     settingsMessage(
       "Unable to log out: " +
-      (error.message || "Unknown error"),
+      settingsErrorText(error),
       "error"
     );
 
@@ -579,73 +809,132 @@ async function logoutSettingsAdmin() {
 // =====================================
 
 async function initializeSettings() {
-  settingsEl("businessProfileForm")
-    .addEventListener(
+  const profileForm = settingsEl(
+    "businessProfileForm"
+  );
+
+  const backupButton = settingsEl(
+    "backupData"
+  );
+
+  const passwordForm = settingsEl(
+    "changePasswordForm"
+  );
+
+  const logoutButton = settingsEl(
+    "settingsLogout"
+  );
+
+  if (profileForm) {
+    profileForm.addEventListener(
       "submit",
       saveBusinessProfile
     );
+  }
 
-  settingsEl("backupData")
-    .addEventListener(
+  if (backupButton) {
+    backupButton.addEventListener(
       "click",
       downloadSettingsBackup
     );
+  }
 
-  settingsEl("changePasswordForm")
-    .addEventListener(
+  if (passwordForm) {
+    passwordForm.addEventListener(
       "submit",
       changeAdminPassword
     );
+  }
 
-  settingsEl("settingsLogout")
-    .addEventListener(
+  if (logoutButton) {
+    logoutButton.addEventListener(
       "click",
       logoutSettingsAdmin
     );
+  }
 
   try {
     await requireSettingsAdmin();
 
+    // Profile and count requests can
+    // run concurrently.
     await Promise.all([
       loadBusinessProfile(),
       updateSettingsSystemInfo()
     ]);
+
+    settingsInitialized = true;
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Unable to initialize Settings:",
+      error
+    );
 
     settingsMessage(
       "Unable to initialize Settings: " +
-      (error.message || "Unknown error"),
+      settingsErrorText(error),
       "error"
     );
   }
-
-  window.addEventListener(
-    "pageshow",
-    () => {
-      updateSettingsSystemInfo();
-    }
-  );
-
-  document.addEventListener(
-    "visibilitychange",
-    () => {
-      if (!document.hidden) {
-        updateSettingsSystemInfo();
-      }
-    }
-  );
 
   if (typeof lucide !== "undefined") {
     lucide.createIcons();
   }
 }
 
+// =====================================
+// REFRESH ON BROWSER RESTORE
+// =====================================
+
+window.addEventListener(
+  "pageshow",
+  event => {
+    if (
+      !event.persisted ||
+      !settingsInitialized ||
+      settingsBusy ||
+      passwordBusy
+    ) {
+      return;
+    }
+
+    updateSettingsSystemInfo()
+      .catch(() => {});
+  }
+);
+
+// =====================================
+// REFRESH ON TAB RETURN
+// =====================================
+
+document.addEventListener(
+  "visibilitychange",
+  () => {
+    if (
+      document.hidden ||
+      !settingsInitialized ||
+      settingsBusy ||
+      passwordBusy
+    ) {
+      return;
+    }
+
+    updateSettingsSystemInfo()
+      .catch(() => {});
+  }
+);
+
+// =====================================
+// START
+// =====================================
+
 if (document.readyState === "loading") {
   document.addEventListener(
     "DOMContentLoaded",
-    initializeSettings
+    initializeSettings,
+    { once: true }
   );
 } else {
   initializeSettings();
 }
+

@@ -4,6 +4,8 @@
 // =====================================
 // TIMIDY STORE — SUPABASE REPORTS
 // Quarterly financial reporting
+// Styled PDF and Excel exports
+// Optimized data refresh and chart updates
 // =====================================
 
 const db = window.timidySupabase;
@@ -28,6 +30,9 @@ let allExpenses = [];
 
 let loading = false;
 let initialized = false;
+let lastDataRefresh = 0;
+
+const REPORT_REFRESH_INTERVAL = 60 * 1000;
 
 // =====================================
 // HELPERS
@@ -88,10 +93,7 @@ function showError(error) {
 // FETCH ALL DATABASE ROWS
 // =====================================
 
-async function fetchAllRows(
-  table,
-  columns
-) {
+async function fetchAllRows(table, columns) {
   const pageSize = 500;
   const result = [];
 
@@ -101,13 +103,8 @@ async function fetchAllRows(
     const { data, error } = await db
       .from(table)
       .select(columns)
-      .order("id", {
-        ascending: true
-      })
-      .range(
-        start,
-        start + pageSize - 1
-      );
+      .order("id", { ascending: true })
+      .range(start, start + pageSize - 1);
 
     if (error) {
       throw error;
@@ -126,6 +123,10 @@ async function fetchAllRows(
 
   return result;
 }
+
+// =====================================
+// LOAD REPORT DATA
+// =====================================
 
 async function loadReportData() {
   const user =
@@ -151,10 +152,12 @@ async function loadReportData() {
       )
     ]);
 
-  // Update both arrays only after both
-  // database queries succeed.
+  // Only update state after both requests
+  // complete successfully.
   allSales = salesRows.map(mapSale);
   allExpenses = expenseRows.map(mapExpense);
+
+  lastDataRefresh = Date.now();
 }
 
 // =====================================
@@ -185,15 +188,8 @@ function getVoidedSales(sales) {
 function calculate(sales, expenses) {
   const activeSales = getActiveSales(sales);
 
-  const revenue = sum(
-    activeSales,
-    "amount"
-  );
-
-  const productCosts = sum(
-    activeSales,
-    "cost"
-  );
+  const revenue = sum(activeSales, "amount");
+  const productCosts = sum(activeSales, "cost");
 
   const transactionCosts = sum(
     activeSales,
@@ -259,34 +255,22 @@ function quarterMonths(year, quarter) {
 // =====================================
 
 function createReport() {
-  const year = Number(
-    el("reportYear").value
-  );
+  const year = Number(el("reportYear").value);
+  const quarter = Number(el("reportQuarter").value);
 
-  const quarter = Number(
-    el("reportQuarter").value
-  );
+  const months = quarterMonths(year, quarter);
 
-  const months = quarterMonths(
-    year,
-    quarter
-  );
-
-  const keys = months.map(
-    month => month.key
+  const keys = new Set(
+    months.map(month => month.key)
   );
 
   const allQuarterSales = allSales.filter(
     sale =>
       typeof sale.date === "string" &&
-      keys.includes(
-        sale.date.slice(0, 7)
-      )
+      keys.has(sale.date.slice(0, 7))
   );
 
-  const sales = getActiveSales(
-    allQuarterSales
-  );
+  const sales = getActiveSales(allQuarterSales);
 
   const voidedSales = getVoidedSales(
     allQuarterSales
@@ -295,15 +279,12 @@ function createReport() {
   const expenses = allExpenses.filter(
     expense =>
       typeof expense.date === "string" &&
-      keys.includes(
-        expense.date.slice(0, 7)
-      )
+      keys.has(expense.date.slice(0, 7))
   );
 
   const monthly = months.map(month => {
     const monthSales = sales.filter(
-      sale =>
-        sale.date.startsWith(month.key)
+      sale => sale.date.startsWith(month.key)
     );
 
     const monthExpenses = expenses.filter(
@@ -313,10 +294,7 @@ function createReport() {
 
     return {
       label: month.label,
-      ...calculate(
-        monthSales,
-        monthExpenses
-      )
+      ...calculate(monthSales, monthExpenses)
     };
   });
 
@@ -328,10 +306,7 @@ function createReport() {
     voidedSales,
     expenses,
     monthly,
-    totals: calculate(
-      sales,
-      expenses
-    )
+    totals: calculate(sales, expenses)
   };
 }
 
@@ -435,10 +410,7 @@ function renderSalesTypes(sales) {
       )
     );
 
-    const revenue = sum(
-      records,
-      "amount"
-    );
+    const revenue = sum(records, "amount");
 
     const profit = records.reduce(
       (total, sale) =>
@@ -468,7 +440,6 @@ function renderSalesTypes(sales) {
 
 function renderTransactions(report) {
   const table = el("reportTransactions");
-  table.replaceChildren();
 
   const records = [
     ...report.sales.map(sale => ({
@@ -494,28 +465,39 @@ function renderTransactions(report) {
       )
   );
 
+  const fragment =
+    document.createDocumentFragment();
+
   if (!records.length) {
-    const row = table.insertRow();
-    const cell = row.insertCell();
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
 
     cell.colSpan = 4;
     cell.textContent =
       "No active transactions in this quarter.";
-    return;
+
+    row.appendChild(cell);
+    fragment.appendChild(row);
+  } else {
+    for (const record of records) {
+      const row = document.createElement("tr");
+
+      [
+        record.date,
+        record.type,
+        record.description || "—",
+        money(record.amount)
+      ].forEach(value => {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        row.appendChild(cell);
+      });
+
+      fragment.appendChild(row);
+    }
   }
 
-  records.forEach(record => {
-    const row = table.insertRow();
-
-    [
-      record.date,
-      record.type,
-      record.description || "—",
-      money(record.amount)
-    ].forEach(value => {
-      row.insertCell().textContent = value;
-    });
-  });
+  table.replaceChildren(fragment);
 }
 
 // =====================================
@@ -531,40 +513,70 @@ function renderChart(report) {
 
   if (!canvas) return;
 
-  if (reportChart) {
-    reportChart.destroy();
-  }
-
   const dark = document.body.classList.contains(
     "dark"
   );
+
+  const legendColor = dark
+    ? "#e2e8f0"
+    : "#334155";
+
+  const tickColor = dark
+    ? "#94a3b8"
+    : "#64748b";
+
+  const labels = report.monthly.map(
+    month => month.label
+  );
+
+  const revenue = report.monthly.map(
+    month => month.revenue
+  );
+
+  const net = report.monthly.map(
+    month => month.net
+  );
+
+  // Update existing chart instead of
+  // destroying and recreating it.
+  if (reportChart) {
+    reportChart.data.labels = labels;
+
+    reportChart.data.datasets[0].data =
+      revenue;
+
+    reportChart.data.datasets[1].data =
+      net;
+
+    reportChart.options.plugins.legend.labels.color =
+      legendColor;
+
+    reportChart.options.scales.x.ticks.color =
+      tickColor;
+
+    reportChart.options.scales.y.ticks.color =
+      tickColor;
+
+    reportChart.update("none");
+    return;
+  }
 
   reportChart = new Chart(canvas, {
     type: "bar",
 
     data: {
-      labels: report.monthly.map(
-        month => month.label
-      ),
+      labels,
 
       datasets: [
         {
           label: "Revenue",
-
-          data: report.monthly.map(
-            month => month.revenue
-          ),
-
+          data: revenue,
           backgroundColor: "#4f7cff",
           borderRadius: 6
         },
         {
           label: "Net Profit",
-
-          data: report.monthly.map(
-            month => month.net
-          ),
-
+          data: net,
           backgroundColor: "#16a34a",
           borderRadius: 6
         }
@@ -578,9 +590,7 @@ function renderChart(report) {
       plugins: {
         legend: {
           labels: {
-            color: dark
-              ? "#e2e8f0"
-              : "#334155"
+            color: legendColor
           }
         },
 
@@ -597,17 +607,13 @@ function renderChart(report) {
       scales: {
         x: {
           ticks: {
-            color: dark
-              ? "#94a3b8"
-              : "#64748b"
+            color: tickColor
           }
         },
 
         y: {
           ticks: {
-            color: dark
-              ? "#94a3b8"
-              : "#64748b",
+            color: tickColor,
 
             callback: value =>
               Number(value).toLocaleString(
@@ -644,18 +650,9 @@ function renderReport() {
     totals.margin.toFixed(1) + "%";
 
   renderBreakdown(totals);
-
-  renderSalesTypes(
-    currentReport.sales
-  );
-
-  renderTransactions(
-    currentReport
-  );
-
-  renderChart(
-    currentReport
-  );
+  renderSalesTypes(currentReport.sales);
+  renderTransactions(currentReport);
+  renderChart(currentReport);
 
   const voidedCount =
     currentReport.voidedSales.length;
@@ -674,8 +671,17 @@ function renderReport() {
 // REFRESH REPORT DATA
 // =====================================
 
-async function refreshReports() {
+async function refreshReports(force = false) {
   if (loading) return;
+
+  if (
+    !force &&
+    initialized &&
+    Date.now() - lastDataRefresh <
+      REPORT_REFRESH_INTERVAL
+  ) {
+    return;
+  }
 
   loading = true;
 
@@ -698,7 +704,7 @@ async function refreshReports() {
 }
 
 // =====================================
-// PDF EXPORT
+// PDF EXPORT — STYLED
 // =====================================
 
 async function downloadPDF() {
@@ -715,108 +721,263 @@ async function downloadPDF() {
   loading = true;
 
   try {
+    // Always fetch fresh data for export.
     await loadReportData();
 
     const report = createReport();
     currentReport = report;
 
     const totals = report.totals;
-
     const pdf = new window.jspdf.jsPDF();
+
+    const W = pdf.internal.pageSize.getWidth();
+    const H = pdf.internal.pageSize.getHeight();
+
+    const NAVY = [30, 41, 59];
+    const MUTED = [100, 116, 139];
+    const BLUE = [48, 91, 190];
+    const GREEN = [22, 134, 83];
+    const RED = [190, 53, 53];
+
+    const LEFT = 16;
+    const RIGHT = W - 16;
 
     let y = 20;
 
-    pdf.setFontSize(20);
-    pdf.text("TIMIDY STORE", 15, y);
+    function write(value, x, yy, options = {}) {
+      pdf.text(String(value), x, yy, options);
+    }
 
-    y += 10;
+    function rule(yy) {
+      pdf.setDrawColor(222, 228, 235);
+      pdf.line(LEFT, yy, RIGHT, yy);
+    }
 
-    pdf.setFontSize(12);
-    pdf.text(
-      `Quarterly Financial Report - ` +
-      `Q${report.quarter} ${report.year}`,
-      15,
-      y
-    );
+    function ensureSpace(height) {
+      if (y + height > H - 25) {
+        pdf.addPage();
+        y = 22;
+      }
+    }
 
-    y += 12;
-    pdf.setFontSize(10);
+    function section(title) {
+      ensureSpace(25);
+      y += 9;
 
-    const lines = [
-      ["Revenue", totals.revenue],
-      [
-        "Cost of Products Sold",
-        totals.productCosts
-      ],
-      ["Gross Profit", totals.gross],
-      [
-        "Transaction Expenses",
-        totals.transactionCosts
-      ],
-      [
-        "Operating Expenses",
-        totals.operatingCosts
-      ],
-      ["Net Profit", totals.net]
-    ];
+      pdf.setTextColor(...NAVY);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(11);
 
-    lines.forEach(([label, amount]) => {
-      pdf.text(label, 15, y);
+      write(title.toUpperCase(), LEFT + 1, y);
 
-      pdf.text(
-        money(amount),
-        195,
-        y,
+      y += 5;
+      rule(y);
+      y += 8;
+    }
+
+    function metric(label, value, emphasis = false) {
+      ensureSpace(emphasis ? 20 : 14);
+
+      if (emphasis) {
+        pdf.setFillColor(
+          ...(value < 0
+            ? [253, 242, 242]
+            : [237, 247, 241])
+        );
+
+        pdf.roundedRect(
+          LEFT,
+          y - 6,
+          W - 32,
+          13,
+          2,
+          2,
+          "F"
+        );
+      }
+
+      pdf.setFont(
+        "helvetica",
+        emphasis ? "bold" : "normal"
+      );
+
+      pdf.setFontSize(emphasis ? 11 : 10);
+      pdf.setTextColor(...NAVY);
+
+      write(label, LEFT + 4, y + 2);
+
+      pdf.setTextColor(
+        ...(emphasis
+          ? (value < 0 ? RED : GREEN)
+          : NAVY)
+      );
+
+      write(
+        money(value),
+        RIGHT - 4,
+        y + 2,
         { align: "right" }
       );
 
-      y += 9;
-    });
+      y += emphasis ? 17 : 12;
+    }
 
-    y += 6;
+    // HEADER
 
-    pdf.text(
-      `Net Profit Margin: ${
-        totals.margin.toFixed(1)
-      }%`,
-      15,
-      y
-    );
+    pdf.setTextColor(...NAVY);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(20);
 
-    y += 12;
-
-    pdf.setFontSize(12);
-    pdf.text(
-      "Monthly Performance",
-      15,
-      y
+    write(
+      "TIMIDY STORE",
+      W / 2,
+      y,
+      { align: "center" }
     );
 
     y += 9;
-    pdf.setFontSize(10);
 
-    report.monthly.forEach(month => {
-      const line =
-        `${month.label}: ` +
-        `Revenue ${money(month.revenue)} | ` +
-        `Net Profit ${money(month.net)}`;
+    pdf.setFontSize(12);
 
-      const wrapped = pdf.splitTextToSize(
-        line,
-        180
-      );
-
-      pdf.text(wrapped, 15, y);
-      y += wrapped.length * 6 + 2;
-    });
+    write(
+      "QUARTERLY FINANCIAL REPORT",
+      W / 2,
+      y,
+      { align: "center" }
+    );
 
     y += 8;
 
-    pdf.setFontSize(12);
-    pdf.text("Sales Summary", 15, y);
-
-    y += 9;
+    pdf.setFont("helvetica", "normal");
+    pdf.setTextColor(...MUTED);
     pdf.setFontSize(10);
+
+    write(
+      `Q${report.quarter} ${report.year}`,
+      W / 2,
+      y,
+      { align: "center" }
+    );
+
+    y += 6;
+    rule(y);
+
+    // FINANCIAL BREAKDOWN
+
+    section("Financial Breakdown");
+
+    metric("Revenue", totals.revenue);
+    metric(
+      "Cost of Products Sold",
+      totals.productCosts
+    );
+    metric("Gross Profit", totals.gross);
+    metric(
+      "Transaction Expenses",
+      totals.transactionCosts
+    );
+    metric(
+      "Operating Expenses",
+      totals.operatingCosts
+    );
+    metric("NET PROFIT", totals.net, true);
+
+    ensureSpace(12);
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(10);
+    pdf.setTextColor(...BLUE);
+
+    write(
+      `Net Profit Margin: ${
+        totals.margin.toFixed(1)
+      }%`,
+      LEFT + 4,
+      y
+    );
+
+    y += 2;
+
+    // MONTHLY PERFORMANCE
+
+    section("Monthly Performance");
+    ensureSpace(15);
+
+    pdf.setFillColor(...NAVY);
+
+    pdf.roundedRect(
+      LEFT,
+      y - 6,
+      W - 32,
+      11,
+      1.5,
+      1.5,
+      "F"
+    );
+
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(9);
+
+    write("MONTH", LEFT + 4, y + 1);
+
+    write(
+      "REVENUE",
+      123,
+      y + 1,
+      { align: "right" }
+    );
+
+    write(
+      "NET PROFIT",
+      RIGHT - 4,
+      y + 1,
+      { align: "right" }
+    );
+
+    y += 13;
+
+    report.monthly.forEach((month, index) => {
+      ensureSpace(14);
+
+      if (index % 2 === 0) {
+        pdf.setFillColor(247, 249, 252);
+
+        pdf.rect(
+          LEFT,
+          y - 6,
+          W - 32,
+          11,
+          "F"
+        );
+      }
+
+      pdf.setTextColor(...NAVY);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+
+      write(month.label, LEFT + 4, y + 1);
+
+      write(
+        money(month.revenue),
+        123,
+        y + 1,
+        { align: "right" }
+      );
+
+      write(
+        money(month.net),
+        RIGHT - 4,
+        y + 1,
+        { align: "right" }
+      );
+
+      y += 12;
+    });
+
+    // SALES SUMMARY
+
+    section("Sales Summary");
 
     const middlemanCount =
       report.sales.filter(
@@ -828,44 +989,69 @@ async function downloadPDF() {
         sale => sale.type === "stock"
       ).length;
 
-    pdf.text(
-      `Middleman Sales: ${middlemanCount}`,
-      15,
-      y
-    );
-
-    y += 8;
-
-    pdf.text(
-      `Own Stock Sales: ${stockCount}`,
-      15,
-      y
-    );
-
-    y += 8;
-
-    pdf.text(
-      `Voided Sales Excluded: ${
+    [
+      ["Middleman Sales", middlemanCount],
+      ["Own Stock Sales", stockCount],
+      [
+        "Voided Sales Excluded",
         report.voidedSales.length
-      }`,
-      15,
-      y
-    );
+      ]
+    ].forEach(([label, value]) => {
+      ensureSpace(12);
 
-    pdf.setFontSize(9);
-    pdf.setTextColor(110);
+      pdf.setTextColor(...NAVY);
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "normal");
 
-    pdf.text(
-      "Generated from Timidy Store Supabase records.",
-      15,
-      280
-    );
+      write(label, LEFT + 4, y);
+
+      pdf.setFont("helvetica", "bold");
+
+      write(
+        String(value),
+        RIGHT - 4,
+        y,
+        { align: "right" }
+      );
+
+      y += 10;
+    });
+
+    // FOOTER ON EVERY PAGE
+
+    const pages =
+      pdf.internal.getNumberOfPages();
+
+    for (let page = 1; page <= pages; page++) {
+      pdf.setPage(page);
+
+      rule(H - 24);
+
+      pdf.setTextColor(...MUTED);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8);
+
+      write(
+        "Generated from Timidy Store Supabase records.",
+        W / 2,
+        H - 16,
+        { align: "center" }
+      );
+
+      write(
+        `Timidy Store | Page ${page} of ${pages}`,
+        W / 2,
+        H - 10,
+        { align: "center" }
+      );
+    }
 
     pdf.save(
       `Timidy-Store-Q${report.quarter}-${report.year}.pdf`
     );
 
     renderReport();
+
   } catch (error) {
     console.error(error);
 
@@ -879,13 +1065,13 @@ async function downloadPDF() {
 }
 
 // =====================================
-// EXCEL EXPORT
+// EXCEL EXPORT — STYLED
 // =====================================
 
 async function downloadExcel() {
-  if (typeof XLSX === "undefined") {
+  if (!window.ExcelJS) {
     alert(
-      "Excel library did not load. " +
+      "ExcelJS library did not load. " +
       "Check your connection."
     );
     return;
@@ -896,6 +1082,7 @@ async function downloadExcel() {
   loading = true;
 
   try {
+    // Always fetch fresh data for export.
     await loadReportData();
 
     const report = createReport();
@@ -903,16 +1090,207 @@ async function downloadExcel() {
 
     const totals = report.totals;
 
-    const workbook = XLSX.utils.book_new();
+    const workbook = new window.ExcelJS.Workbook();
 
-    // -------- SUMMARY --------
+    workbook.creator = "Timidy Store";
+    workbook.subject =
+      `Quarterly Financial Report Q${report.quarter} ${report.year}`;
 
-    const summary = [
-      ["Timidy Store - Quarterly Report"],
-      ["Year", report.year],
-      ["Quarter", `Q${report.quarter}`],
-      [],
-      ["Metric", "TZS"],
+    const NAVY = "FF1E293B";
+    const BLUE = "FF305BBE";
+    const LIGHT = "FFEFF4FC";
+    const GREEN = "FF168653";
+    const RED = "FFBE3535";
+    const WHITE = "FFFFFFFF";
+
+    const CURRENCY =
+      '"TZS" #,##0.00;[Red]("TZS" #,##0.00)';
+
+    const INTEGER = "#,##0";
+    const PERCENT_NUMBER = '0.0"%"';
+
+    // Creates a consistently styled worksheet.
+    function makeSheet(
+      name,
+      headers,
+      widths,
+      rows,
+      moneyCols = [],
+      integerCols = []
+    ) {
+      const ws = workbook.addWorksheet(name, {
+        views: [
+          { state: "frozen", ySplit: 4 }
+        ]
+      });
+
+      ws.columns = widths.map(width => ({
+        width
+      }));
+
+      // MAIN TITLE
+
+      ws.mergeCells(1, 1, 1, headers.length);
+
+      const title = ws.getCell(1, 1);
+
+      title.value =
+        `TIMIDY STORE | ${name.toUpperCase()}`;
+
+      title.font = {
+        name: "Calibri",
+        size: 16,
+        bold: true,
+        color: { argb: WHITE }
+      };
+
+      title.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: NAVY }
+      };
+
+      title.alignment = {
+        vertical: "middle",
+        horizontal: "left",
+        indent: 1
+      };
+
+      ws.getRow(1).height = 34;
+
+      // SUBTITLE
+
+      ws.mergeCells(2, 1, 2, headers.length);
+
+      const subtitle = ws.getCell(2, 1);
+
+      subtitle.value =
+        `Quarterly Financial Report - Q${report.quarter} ${report.year}`;
+
+      subtitle.font = {
+        name: "Calibri",
+        size: 11,
+        color: { argb: BLUE }
+      };
+
+      subtitle.alignment = {
+        vertical: "middle",
+        indent: 1
+      };
+
+      ws.getRow(2).height = 24;
+
+      // COLUMN HEADERS
+
+      const heading = ws.getRow(4);
+
+      heading.values = headers;
+      heading.height = 27;
+
+      heading.eachCell(cell => {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: BLUE }
+        };
+
+        cell.font = {
+          name: "Calibri",
+          bold: true,
+          color: { argb: WHITE }
+        };
+
+        cell.alignment = {
+          vertical: "middle",
+          wrapText: true
+        };
+
+        cell.border = {
+          bottom: {
+            style: "thin",
+            color: { argb: NAVY }
+          }
+        };
+      });
+
+      // DATA ROWS
+
+      rows.forEach((values, index) => {
+        const row = ws.addRow(values);
+
+        row.height = 23;
+
+        row.eachCell(
+          { includeEmpty: true },
+          (cell, col) => {
+            cell.font = {
+              name: "Calibri",
+              size: 11,
+              color: { argb: NAVY }
+            };
+
+            cell.alignment = {
+              vertical: "middle",
+              wrapText: true
+            };
+
+            if (index % 2 === 0) {
+              cell.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: LIGHT }
+              };
+            }
+
+            if (
+              moneyCols.includes(col) &&
+              typeof cell.value === "number"
+            ) {
+              cell.numFmt = CURRENCY;
+            }
+
+            if (
+              integerCols.includes(col) &&
+              typeof cell.value === "number"
+            ) {
+              cell.numFmt = INTEGER;
+            }
+          }
+        );
+      });
+
+      // FILTERS
+
+      if (rows.length > 0) {
+        ws.autoFilter = {
+          from: {
+            row: 4,
+            column: 1
+          },
+          to: {
+            row: 4 + rows.length,
+            column: headers.length
+          }
+        };
+      }
+
+      // PRINT SETTINGS
+
+      ws.pageSetup = {
+        orientation: "landscape",
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0
+      };
+
+      return ws;
+    }
+
+    // =================================
+    // SUMMARY WORKSHEET
+    // =================================
+
+    const summaryRows = [
       ["Revenue", totals.revenue],
       [
         "Cost of Products Sold",
@@ -932,130 +1310,215 @@ async function downloadExcel() {
         "Net Profit Margin (%)",
         totals.margin
       ],
-      [],
       [
         "Voided Sales Excluded",
         report.voidedSales.length
       ]
     ];
 
-    const summarySheet =
-      XLSX.utils.aoa_to_sheet(summary);
-
-    summarySheet["!cols"] = [
-      { wch: 30 },
-      { wch: 20 }
-    ];
-
-    XLSX.utils.book_append_sheet(
-      workbook,
-      summarySheet,
-      "Summary"
+    const summary = makeSheet(
+      "Summary",
+      ["Metric", "Value"],
+      [36, 28],
+      summaryRows,
+      [2]
     );
 
-    // -------- MONTHLY --------
+    // Data begins at row 5.
+    // Net Profit is row 10.
+    // Margin is row 11.
+    // Voided count is row 12.
 
-    const monthlySheet =
-      XLSX.utils.json_to_sheet(
-        report.monthly.map(month => ({
-          Month: month.label,
-          Revenue: month.revenue,
-          "Product Costs":
-            month.productCosts,
-          "Gross Profit": month.gross,
-          "Transaction Expenses":
-            month.transactionCosts,
-          "Operating Expenses":
-            month.operatingCosts,
-          "Net Profit": month.net
-        }))
-      );
+    summary.getCell(11, 2).numFmt =
+      PERCENT_NUMBER;
 
-    XLSX.utils.book_append_sheet(
-      workbook,
-      monthlySheet,
-      "Monthly"
+    summary.getCell(12, 2).numFmt =
+      INTEGER;
+
+    const profitRow = summary.getRow(10);
+
+    const profitColor =
+      totals.net < 0 ? RED : GREEN;
+
+    profitRow.eachCell(cell => {
+      cell.font = {
+        name: "Calibri",
+        bold: true,
+        color: { argb: WHITE },
+        size: 12
+      };
+
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: profitColor }
+      };
+    });
+
+    summary.getCell(10, 2).numFmt =
+      CURRENCY;
+
+    // =================================
+    // MONTHLY WORKSHEET
+    // =================================
+
+    makeSheet(
+      "Monthly",
+      [
+        "Month",
+        "Revenue",
+        "Product Costs",
+        "Gross Profit",
+        "Transaction Expenses",
+        "Operating Expenses",
+        "Net Profit"
+      ],
+      [16, 23, 23, 23, 27, 27, 23],
+      report.monthly.map(month => [
+        month.label,
+        month.revenue,
+        month.productCosts,
+        month.gross,
+        month.transactionCosts,
+        month.operatingCosts,
+        month.net
+      ]),
+      [2, 3, 4, 5, 6, 7]
     );
 
-    // -------- ACTIVE SALES --------
+    // =================================
+    // ACTIVE SALES WORKSHEET
+    // =================================
 
-    const salesSheet =
-      XLSX.utils.json_to_sheet(
-        report.sales.map(sale => ({
-          Date: sale.date,
-          Product: sale.productName,
-          Type: sale.type,
-          Quantity: sale.quantity,
-          Revenue: sale.amount,
-          "Product Cost": sale.cost,
-          "Transaction Expenses":
-            sale.expenses,
-          Profit: sale.profit,
-          Status: "Active"
-        }))
-      );
-
-    XLSX.utils.book_append_sheet(
-      workbook,
-      salesSheet,
-      "Sales"
+    makeSheet(
+      "Sales",
+      [
+        "Date",
+        "Product",
+        "Type",
+        "Quantity",
+        "Revenue",
+        "Product Cost",
+        "Transaction Expenses",
+        "Profit",
+        "Status"
+      ],
+      [
+        18, 32, 20, 14, 23,
+        23, 27, 23, 16
+      ],
+      report.sales.map(sale => [
+        sale.date,
+        sale.productName,
+        sale.type,
+        sale.quantity,
+        sale.amount,
+        sale.cost,
+        sale.expenses,
+        sale.profit,
+        "Active"
+      ]),
+      [5, 6, 7, 8],
+      [4]
     );
 
-    // -------- OPERATING EXPENSES --------
+    // =================================
+    // EXPENSES WORKSHEET
+    // =================================
 
-    const expensesSheet =
-      XLSX.utils.json_to_sheet(
-        report.expenses.map(expense => ({
-          Date: expense.date,
-          Description: expense.title,
-          Category: expense.category,
-          Amount: expense.amount,
-          Notes: expense.notes
-        }))
-      );
-
-    XLSX.utils.book_append_sheet(
-      workbook,
-      expensesSheet,
-      "Expenses"
+    makeSheet(
+      "Expenses",
+      [
+        "Date",
+        "Description",
+        "Category",
+        "Amount",
+        "Notes"
+      ],
+      [18, 34, 24, 24, 45],
+      report.expenses.map(expense => [
+        expense.date,
+        expense.title,
+        expense.category,
+        expense.amount,
+        expense.notes
+      ]),
+      [4]
     );
 
-    // -------- VOIDED SALES AUDIT --------
+    // =================================
+    // VOIDED SALES AUDIT WORKSHEET
+    // =================================
 
-    const voidedSheet =
-      XLSX.utils.json_to_sheet(
-        report.voidedSales.map(sale => ({
-          "Sale ID": sale.id,
-          "Original Date": sale.date,
-          Product: sale.productName,
-          Type: sale.type,
-          Quantity: sale.quantity,
-          "Original Revenue": sale.amount,
-          "Original Product Cost":
-            sale.cost,
-          "Original Transaction Expenses":
-            sale.expenses,
-          "Original Profit": sale.profit,
-          Status: "Voided",
-          "Voided At":
-            sale.voidedAt || "",
-          "Void Reason":
-            sale.voidReason || ""
-        }))
-      );
-
-    XLSX.utils.book_append_sheet(
-      workbook,
-      voidedSheet,
-      "Voided Sales"
+    makeSheet(
+      "Voided Sales",
+      [
+        "Sale ID",
+        "Original Date",
+        "Product",
+        "Type",
+        "Quantity",
+        "Original Revenue",
+        "Original Product Cost",
+        "Original Transaction Expenses",
+        "Original Profit",
+        "Status",
+        "Voided At",
+        "Void Reason"
+      ],
+      [
+        42, 18, 32, 20, 14, 24,
+        27, 32, 24, 16, 25, 42
+      ],
+      report.voidedSales.map(sale => [
+        sale.id,
+        sale.date,
+        sale.productName,
+        sale.type,
+        sale.quantity,
+        sale.amount,
+        sale.cost,
+        sale.expenses,
+        sale.profit,
+        "Voided",
+        sale.voidedAt || "",
+        sale.voidReason || ""
+      ]),
+      [6, 7, 8, 9],
+      [5]
     );
 
-    XLSX.writeFile(
-      workbook,
-      `Timidy-Store-Q${report.quarter}-${report.year}.xlsx`
-    );
+    // =================================
+    // DOWNLOAD XLSX
+    // =================================
+
+    const buffer =
+      await workbook.xlsx.writeBuffer();
+
+    const blob = new Blob([buffer], {
+      type:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
+
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+
+    link.href = url;
+
+    link.download =
+      `Timidy-Store-Q${report.quarter}-${report.year}.xlsx`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 10000);
 
     renderReport();
+
   } catch (error) {
     console.error(error);
 
@@ -1097,9 +1560,7 @@ function initializeYears(
       )
     ) {
       years.add(
-        Number(
-          record.date.slice(0, 4)
-        )
+        Number(record.date.slice(0, 4))
       );
     }
   });
@@ -1120,14 +1581,10 @@ function initializeYears(
       ? Number(previousYear)
       : now.getFullYear();
 
-  yearSelect.value = String(
-    selectedYear
-  );
+  yearSelect.value = String(selectedYear);
 
   const currentQuarter =
-    Math.floor(
-      now.getMonth() / 3
-    ) + 1;
+    Math.floor(now.getMonth() / 3) + 1;
 
   quarterSelect.value =
     preserveSelection &&
@@ -1137,6 +1594,10 @@ function initializeYears(
       ? previousQuarter
       : String(currentQuarter);
 }
+
+// =====================================
+// THEME CHANGE
+// =====================================
 
 window.addEventListener(
   "timidy-theme-change",
@@ -1171,16 +1632,32 @@ el("downloadExcel").addEventListener(
   downloadExcel
 );
 
-// Refresh when returning to Reports.
+// =====================================
+// BROWSER BACK/FORWARD CACHE
+// =====================================
+
+// Only check when the browser restores
+// an existing page from its back/forward
+// cache. Ordinary initial load is handled
+// by refreshReports() below.
 
 window.addEventListener(
   "pageshow",
-  () => {
-    refreshReports();
+  event => {
+    if (event.persisted) {
+      refreshReports();
+    }
   }
 );
 
-// Refresh when switching back to the tab.
+// =====================================
+// TAB VISIBILITY REFRESH
+// =====================================
+
+// Returning quickly does not trigger
+// another database download.
+//
+// After 60 seconds, data is refreshed.
 
 document.addEventListener(
   "visibilitychange",

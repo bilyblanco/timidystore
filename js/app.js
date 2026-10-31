@@ -3,6 +3,7 @@
 
 // =====================================
 // TIMIDY STORE — SUPABASE DASHBOARD
+// Optimized dashboard loading
 // =====================================
 
 const db = window.timidySupabase;
@@ -13,13 +14,24 @@ if (!db) {
 
 const field = id => document.getElementById(id);
 
+// =====================================
+// DASHBOARD STATE
+// =====================================
+
 let dashboardSales = [];
 let dashboardExpenses = [];
 let dashboardProducts = [];
 
 let salesChart = null;
+
 let dashboardLoading = false;
 let dashboardLoaded = false;
+
+// Time of the last successful database load.
+let lastDashboardRefresh = 0;
+
+// Refresh when returning after 60 seconds.
+const DASHBOARD_REFRESH_INTERVAL = 60 * 1000;
 
 // =====================================
 // HELPERS
@@ -48,10 +60,10 @@ function mapSale(row) {
     status: row.status,
     voided: row.voided,
     productName: row.product_name,
-    amount: Number(row.amount),
-    cost: Number(row.cost),
-    expenses: Number(row.expenses),
-    profit: Number(row.profit)
+    amount: Number(row.amount || 0),
+    cost: Number(row.cost || 0),
+    expenses: Number(row.expenses || 0),
+    profit: Number(row.profit || 0)
   };
 }
 
@@ -59,7 +71,7 @@ function mapExpense(row) {
   return {
     id: row.id,
     date: row.date,
-    amount: Number(row.amount)
+    amount: Number(row.amount || 0)
   };
 }
 
@@ -67,10 +79,14 @@ function mapProduct(row) {
   return {
     id: row.id,
     name: row.name,
-    quantity: Number(row.quantity),
-    minimumStock: Number(row.minimum_stock)
+    quantity: Number(row.quantity || 0),
+    minimumStock: Number(row.minimum_stock || 0)
   };
 }
+
+// =====================================
+// ERROR HANDLING
+// =====================================
 
 function showDashboardError(error) {
   console.error("Dashboard error:", error);
@@ -79,6 +95,7 @@ function showDashboardError(error) {
 
   if (!notice) {
     notice = document.createElement("div");
+
     notice.id = "dashboardLoadError";
     notice.className = "sale-message error";
     notice.setAttribute("role", "alert");
@@ -125,9 +142,15 @@ function getActiveSales(sales) {
 function calculateTotals(sales, expenses) {
   const activeSales = getActiveSales(sales);
 
-  const revenue = sum(activeSales, "amount");
+  const revenue = sum(
+    activeSales,
+    "amount"
+  );
 
-  const costOfGoods = sum(activeSales, "cost");
+  const costOfGoods = sum(
+    activeSales,
+    "cost"
+  );
 
   const transactionExpenses = sum(
     activeSales,
@@ -167,10 +190,21 @@ function updateDashboardCards(sales, expenses) {
     expenses
   );
 
-  const revenueCard = field("dashboardRevenue");
-  const grossProfitCard = field("dashboardGrossProfit");
-  const netProfitCard = field("dashboardNetProfit");
-  const expensesCard = field("dashboardExpenses");
+  const revenueCard = field(
+    "dashboardRevenue"
+  );
+
+  const grossProfitCard = field(
+    "dashboardGrossProfit"
+  );
+
+  const netProfitCard = field(
+    "dashboardNetProfit"
+  );
+
+  const expensesCard = field(
+    "dashboardExpenses"
+  );
 
   if (revenueCard) {
     revenueCard.textContent = money(
@@ -202,7 +236,9 @@ function updateDashboardCards(sales, expenses) {
 // =====================================
 
 function renderRecentTransactions(sales) {
-  const table = field("recentTransactions");
+  const table = field(
+    "recentTransactions"
+  );
 
   if (!table) return;
 
@@ -222,6 +258,7 @@ function renderRecentTransactions(sales) {
     const cell = row.insertCell();
 
     cell.colSpan = 5;
+
     cell.textContent =
       "No active sales recorded yet.";
 
@@ -259,7 +296,10 @@ function renderStockAlerts(products) {
   container.replaceChildren();
 
   const alerts = products.filter(product => {
-    const quantity = Number(product.quantity);
+    const quantity = Number(
+      product.quantity
+    );
+
     const minimumStock = Number(
       product.minimumStock
     );
@@ -275,20 +315,24 @@ function renderStockAlerts(products) {
     const empty = document.createElement("p");
 
     empty.className = "no-alerts";
+
     empty.textContent =
       "All registered products have sufficient stock.";
 
     container.appendChild(empty);
+
     return;
   }
 
   alerts.forEach(product => {
     const item = document.createElement("div");
+
     item.className = "stock-alert-item";
 
     const info = document.createElement("div");
 
     const name = document.createElement("strong");
+
     name.textContent = product.name;
 
     const description = document.createElement("p");
@@ -301,6 +345,7 @@ function renderStockAlerts(products) {
     info.append(name, description);
 
     const badge = document.createElement("span");
+
     badge.className = "stock-alert-badge";
 
     badge.textContent =
@@ -309,6 +354,7 @@ function renderStockAlerts(products) {
         : "Low Stock";
 
     item.append(info, badge);
+
     container.appendChild(item);
   });
 }
@@ -360,10 +406,13 @@ function buildMonthlyData(sales, expenses, months) {
     );
 
     result.push({
-      label: date.toLocaleDateString("en-US", {
-        month: "short",
-        year: "2-digit"
-      }),
+      label: date.toLocaleDateString(
+        "en-US",
+        {
+          month: "short",
+          year: "2-digit"
+        }
+      ),
       revenue: totals.revenue,
       netProfit: totals.netProfit
     });
@@ -386,7 +435,9 @@ function renderChart(sales, expenses) {
     return;
   }
 
-  const periodSelect = field("chartPeriod");
+  const periodSelect = field(
+    "chartPeriod"
+  );
 
   const selectedMonths = Number(
     periodSelect?.value || 6
@@ -404,19 +455,49 @@ function renderChart(sales, expenses) {
     months
   );
 
-  if (salesChart) {
-    salesChart.destroy();
-  }
-
   const dark = document.body.classList.contains(
     "dark"
   );
+
+  // Reuse an existing chart rather than
+  // destroying and rebuilding it.
+  if (salesChart) {
+    salesChart.data.labels = data.map(
+      item => item.label
+    );
+
+    salesChart.data.datasets[0].data =
+      data.map(item => item.revenue);
+
+    salesChart.data.datasets[1].data =
+      data.map(item => item.netProfit);
+
+    salesChart.options.plugins.legend.labels.color =
+      dark ? "#e2e8f0" : "#334155";
+
+    salesChart.options.scales.x.ticks.color =
+      dark ? "#94a3b8" : "#64748b";
+
+    salesChart.options.scales.y.ticks.color =
+      dark ? "#94a3b8" : "#64748b";
+
+    salesChart.options.scales.y.grid.color =
+      dark
+        ? "rgba(148,163,184,0.12)"
+        : "rgba(148,163,184,0.18)";
+
+    salesChart.update("none");
+
+    return;
+  }
 
   salesChart = new Chart(canvas, {
     type: "line",
 
     data: {
-      labels: data.map(item => item.label),
+      labels: data.map(
+        item => item.label
+      ),
 
       datasets: [
         {
@@ -427,6 +508,7 @@ function renderChart(sales, expenses) {
           ),
 
           borderColor: "#4f7cff",
+
           backgroundColor:
             "rgba(79,124,255,0.12)",
 
@@ -442,6 +524,7 @@ function renderChart(sales, expenses) {
           ),
 
           borderColor: "#16a34a",
+
           backgroundColor:
             "rgba(22,163,74,0.08)",
 
@@ -535,15 +618,8 @@ function renderDashboard() {
 }
 
 // =====================================
-// LOAD ALL ROWS FROM SUPABASE
+// FETCH ALL DATABASE ROWS
 // =====================================
-
-// Supabase queries commonly return up to
-// 1,000 rows by default. Read in pages so
-// older transactions aren't silently omitted.
-//
-// For a much larger store, we'll eventually
-// move dashboard aggregation to SQL.
 
 async function fetchAllRows(
   table,
@@ -586,11 +662,28 @@ async function fetchAllRows(
 }
 
 // =====================================
-// REFRESH FROM SUPABASE
+// DASHBOARD REFRESH
 // =====================================
 
-async function refreshDashboard() {
-  if (dashboardLoading) return;
+async function refreshDashboard(
+  force = false
+) {
+  // Prevent overlapping database loads.
+  if (dashboardLoading) {
+    return;
+  }
+
+  // Reuse already loaded data when it is
+  // still fresh, unless a forced refresh
+  // has been requested.
+  const dataIsFresh =
+    dashboardLoaded &&
+    Date.now() - lastDashboardRefresh <
+      DASHBOARD_REFRESH_INTERVAL;
+
+  if (!force && dataIsFresh) {
+    return;
+  }
 
   dashboardLoading = true;
 
@@ -627,6 +720,8 @@ async function refreshDashboard() {
       )
     ]);
 
+    // Only update dashboard state after
+    // all three queries succeed.
     dashboardSales = salesRows.map(
       mapSale
     );
@@ -641,13 +736,17 @@ async function refreshDashboard() {
 
     dashboardLoaded = true;
 
+    lastDashboardRefresh = Date.now();
+
     clearDashboardError();
+
     renderDashboard();
+
   } catch (error) {
     showDashboardError(error);
 
-    // Do not replace existing figures with
-    // misleading zeros when loading fails.
+    // Never replace previously loaded
+    // financial data with false zeros.
     if (!dashboardLoaded) {
       [
         "dashboardRevenue",
@@ -658,7 +757,8 @@ async function refreshDashboard() {
         const element = field(id);
 
         if (element) {
-          element.textContent = "Unavailable";
+          element.textContent =
+            "Unavailable";
         }
       });
     }
@@ -666,6 +766,10 @@ async function refreshDashboard() {
     dashboardLoading = false;
   }
 }
+
+// =====================================
+// THEME CHANGE
+// =====================================
 
 window.addEventListener(
   "timidy-theme-change",
@@ -683,7 +787,9 @@ window.addEventListener(
 // CHART PERIOD
 // =====================================
 
-const chartPeriod = field("chartPeriod");
+const chartPeriod = field(
+  "chartPeriod"
+);
 
 if (chartPeriod) {
   chartPeriod.addEventListener(
@@ -703,16 +809,19 @@ if (chartPeriod) {
 // PAGE REFRESH EVENTS
 // =====================================
 
+// When navigating back to the dashboard,
+// refresh only if its data is old enough.
 window.addEventListener(
   "pageshow",
-  () => {
-    refreshDashboard();
+  event => {
+    if (event.persisted) {
+      refreshDashboard();
+    }
   }
 );
 
-// Refresh when returning to the browser
-// tab after using another module.
-
+// When returning to the browser tab,
+// check whether the data is stale.
 document.addEventListener(
   "visibilitychange",
   () => {
@@ -730,7 +839,9 @@ document.addEventListener(
 // =====================================
 
 function animateDashboardGreeting() {
-  const greeting = field("greetingText");
+  const greeting = field(
+    "greetingText"
+  );
 
   if (!greeting) return;
 
@@ -781,7 +892,9 @@ function animateDashboardGreeting() {
 // INITIALIZATION
 // =====================================
 
-refreshDashboard();
+// Always fetch fresh data on a new
+// dashboard page load.
+refreshDashboard(true);
 
 if (typeof lucide !== "undefined") {
   lucide.createIcons();

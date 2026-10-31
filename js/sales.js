@@ -3,6 +3,7 @@
 
 // =====================================
 // TIMIDY STORE — SUPABASE SALES
+// Optimized loading and rendering
 // =====================================
 
 const db = window.timidySupabase;
@@ -19,43 +20,64 @@ const salesTable = document.getElementById("salesTable");
 const message = document.getElementById("saleMessage");
 
 let saleType = "middleman";
+
 let products = [];
 let sales = [];
 let customers = [];
+
+let productById = new Map();
+let saleById = new Map();
+let customerById = new Map();
+
 let busy = false;
+let initialized = false;
+let lastDataRefresh = 0;
 
 let saleDetailsModal = null;
 let lastDetailsTrigger = null;
 let activeSaleId = null;
+
+// Refresh only after returning from a
+// sufficiently long period away.
+const SALES_REFRESH_INTERVAL = 60 * 1000;
 
 // =====================================
 // HELPERS
 // =====================================
 
 function createId() {
-  if (crypto?.randomUUID) {
+  if (globalThis.crypto?.randomUUID) {
     return crypto.randomUUID();
   }
 
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return (
+    `${Date.now()}-` +
+    Math.random().toString(36).slice(2)
+  );
 }
 
 function money(value) {
-  return "TZS " + Number(value || 0).toLocaleString(
-    "en-TZ",
-    { maximumFractionDigits: 2 }
+  return (
+    "TZS " +
+    Number(value || 0).toLocaleString(
+      "en-TZ",
+      { maximumFractionDigits: 2 }
+    )
   );
 }
 
 function numberFrom(id) {
-  return Number(document.getElementById(id).value);
+  return Number(
+    document.getElementById(id).value
+  );
 }
 
 function setMessage(text, type = "") {
   if (!message) return;
 
   message.textContent = text;
-  message.className = "sale-message " + type;
+  message.className =
+    "sale-message " + type;
 }
 
 function errorText(error) {
@@ -66,8 +88,13 @@ function getLocalDate() {
   const now = new Date();
 
   const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
+  const month = String(
+    now.getMonth() + 1
+  ).padStart(2, "0");
+
+  const day = String(
+    now.getDate()
+  ).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
@@ -77,7 +104,9 @@ function validDate(value) {
     return false;
   }
 
-  const date = new Date(value + "T00:00:00Z");
+  const date = new Date(
+    value + "T00:00:00Z"
+  );
 
   return (
     !Number.isNaN(date.getTime()) &&
@@ -86,9 +115,13 @@ function validDate(value) {
 }
 
 function normalizeCustomerPhone(phone) {
-  let value = String(phone || "").replace(/[^\d+]/g, "");
+  let value = String(phone || "")
+    .replace(/[^\d+]/g, "");
 
-  if (value.startsWith("0") && value.length === 10) {
+  if (
+    value.startsWith("0") &&
+    value.length === 10
+  ) {
     value = "+255" + value.slice(1);
   } else if (value.startsWith("255")) {
     value = "+" + value;
@@ -98,15 +131,20 @@ function normalizeCustomerPhone(phone) {
 }
 
 function isVoided(sale) {
-  return sale.status === "voided" || sale.voided === true;
+  return (
+    sale.status === "voided" ||
+    sale.voided === true
+  );
 }
 
 function mapProduct(row) {
   return {
     id: row.id,
     name: row.name,
-    quantity: Number(row.quantity),
-    purchasePrice: Number(row.purchase_price)
+    quantity: Number(row.quantity || 0),
+    purchasePrice: Number(
+      row.purchase_price || 0
+    )
   };
 }
 
@@ -118,11 +156,11 @@ function mapSale(row) {
     customerId: row.customer_id,
     productId: row.product_id,
     productName: row.product_name,
-    quantity: Number(row.quantity),
-    amount: Number(row.amount),
-    cost: Number(row.cost),
-    expenses: Number(row.expenses),
-    profit: Number(row.profit),
+    quantity: Number(row.quantity || 0),
+    amount: Number(row.amount || 0),
+    cost: Number(row.cost || 0),
+    expenses: Number(row.expenses || 0),
+    profit: Number(row.profit || 0),
     date: row.date,
     customer: row.customer || "",
     customerPhone: row.customer_phone || "",
@@ -145,15 +183,18 @@ function setBusy(value) {
   middlemanTab.disabled = value;
   stockTab.disabled = value;
 
-  salesTable.querySelectorAll("button").forEach(button => {
+  salesTable.querySelectorAll(
+    "button"
+  ).forEach(button => {
     button.disabled = value;
   });
 
   if (saleDetailsModal) {
-    saleDetailsModal.querySelectorAll("button")
-      .forEach(button => {
-        button.disabled = value;
-      });
+    saleDetailsModal.querySelectorAll(
+      "button"
+    ).forEach(button => {
+      button.disabled = value;
+    });
   }
 }
 
@@ -169,8 +210,12 @@ async function refreshData() {
   ] = await Promise.all([
     db
       .from("inventory")
-      .select("id,name,quantity,purchase_price")
-      .order("name", { ascending: true }),
+      .select(
+        "id,name,quantity,purchase_price"
+      )
+      .order("name", {
+        ascending: true
+      }),
 
     db
       .from("sales")
@@ -180,7 +225,9 @@ async function refreshData() {
         "profit,date,customer,customer_phone," +
         "customer_email,voided,voided_at,void_reason"
       )
-      .order("date", { ascending: false }),
+      .order("date", {
+        ascending: false
+      }),
 
     db
       .from("customers")
@@ -197,9 +244,46 @@ async function refreshData() {
     }
   }
 
-  products = (inventoryResult.data || []).map(mapProduct);
-  sales = (salesResult.data || []).map(mapSale);
-  customers = customersResult.data || [];
+  // Update all state only after every
+  // database request succeeds.
+  const nextProducts = (
+    inventoryResult.data || []
+  ).map(mapProduct);
+
+  const nextSales = (
+    salesResult.data || []
+  ).map(mapSale);
+
+  const nextCustomers =
+    customersResult.data || [];
+
+  products = nextProducts;
+  sales = nextSales;
+  customers = nextCustomers;
+
+  // Fast lookups by ID.
+  productById = new Map(
+    products.map(item => [
+      item.id,
+      item
+    ])
+  );
+
+  saleById = new Map(
+    sales.map(item => [
+      item.id,
+      item
+    ])
+  );
+
+  customerById = new Map(
+    customers.map(item => [
+      item.id,
+      item
+    ])
+  );
+
+  lastDataRefresh = Date.now();
 
   renderStockOptions();
   renderSales();
@@ -211,8 +295,8 @@ async function refreshData() {
 // =====================================
 
 function getSaleCustomer(sale) {
-  const customer = customers.find(
-    item => item.id === sale.customerId
+  const customer = customerById.get(
+    sale.customerId
   );
 
   return {
@@ -252,22 +336,34 @@ function changeSaleType(type) {
     type === "stock"
   );
 
-  document.getElementById("middlemanFields")
-    .classList.toggle("hidden", type !== "middleman");
+  document.getElementById(
+    "middlemanFields"
+  ).classList.toggle(
+    "hidden",
+    type !== "middleman"
+  );
 
-  document.getElementById("stockFields")
-    .classList.toggle("hidden", type !== "stock");
+  document.getElementById(
+    "stockFields"
+  ).classList.toggle(
+    "hidden",
+    type !== "stock"
+  );
 
-  document.getElementById("middlemanProduct").required =
-    type === "middleman";
+  document.getElementById(
+    "middlemanProduct"
+  ).required = type === "middleman";
 
-  document.getElementById("supplierCost").required =
-    type === "middleman";
+  document.getElementById(
+    "supplierCost"
+  ).required = type === "middleman";
 
-  stockSelect.required = type === "stock";
-
-  document.getElementById("stockQuantity").required =
+  stockSelect.required =
     type === "stock";
+
+  document.getElementById(
+    "stockQuantity"
+  ).required = type === "stock";
 
   setMessage("");
   updateProfitPreview();
@@ -278,29 +374,41 @@ function changeSaleType(type) {
 // =====================================
 
 function renderStockOptions() {
-  const selectedProduct = stockSelect.value;
+  const selectedProduct =
+    stockSelect.value;
 
-  stockSelect.replaceChildren();
+  const fragment =
+    document.createDocumentFragment();
 
-  stockSelect.add(
-    new Option("Select available stock", "")
+  fragment.appendChild(
+    new Option(
+      "Select available stock",
+      ""
+    )
   );
 
-  products
-    .filter(product => product.quantity > 0)
-    .forEach(product => {
-      stockSelect.add(
-        new Option(
-          `${product.name} (${product.quantity} available)`,
-          product.id
-        )
-      );
-    });
+  let selectedStillAvailable = false;
 
-  const stillAvailable = [...stockSelect.options]
-    .some(option => option.value === selectedProduct);
+  products.forEach(product => {
+    if (product.quantity <= 0) {
+      return;
+    }
 
-  if (stillAvailable) {
+    const option = new Option(
+      `${product.name} (${product.quantity} available)`,
+      product.id
+    );
+
+    if (product.id === selectedProduct) {
+      selectedStillAvailable = true;
+    }
+
+    fragment.appendChild(option);
+  });
+
+  stockSelect.replaceChildren(fragment);
+
+  if (selectedStillAvailable) {
     stockSelect.value = selectedProduct;
   }
 }
@@ -310,19 +418,28 @@ function renderStockOptions() {
 // =====================================
 
 function calculateProfit() {
-  const amount = numberFrom("saleAmount");
-  const expenses = numberFrom("saleExpenses");
+  const amount = numberFrom(
+    "saleAmount"
+  );
+
+  const expenses = numberFrom(
+    "saleExpenses"
+  );
 
   let cost = 0;
 
   if (saleType === "middleman") {
-    cost = numberFrom("supplierCost");
+    cost = numberFrom(
+      "supplierCost"
+    );
   } else {
-    const product = products.find(
-      item => item.id === stockSelect.value
+    const product = productById.get(
+      stockSelect.value
     );
 
-    if (!product) return 0;
+    if (!product) {
+      return 0;
+    }
 
     cost =
       product.purchasePrice *
@@ -339,8 +456,14 @@ function updateProfitPreview() {
     "profitPreview"
   );
 
+  if (!preview) return;
+
   preview.textContent = money(profit);
-  preview.classList.toggle("negative", profit < 0);
+
+  preview.classList.toggle(
+    "negative",
+    profit < 0
+  );
 }
 
 // =====================================
@@ -348,14 +471,15 @@ function updateProfitPreview() {
 // =====================================
 
 function renderSales() {
-  salesTable.replaceChildren();
-
   let revenue = 0;
   let middlemanProfit = 0;
   let stockProfit = 0;
 
+  // Calculate totals in one pass.
   sales.forEach(sale => {
-    if (isVoided(sale)) return;
+    if (isVoided(sale)) {
+      return;
+    }
 
     revenue += sale.amount;
 
@@ -366,77 +490,150 @@ function renderSales() {
     }
   });
 
-  document.getElementById("totalSales").textContent =
-    money(revenue);
+  document.getElementById(
+    "totalSales"
+  ).textContent = money(revenue);
 
-  document.getElementById("middlemanProfit").textContent =
-    money(middlemanProfit);
-
-  document.getElementById("stockProfit").textContent =
-    money(stockProfit);
-
-  document.getElementById("totalProfit").textContent =
-    money(middlemanProfit + stockProfit);
-
-  const sorted = [...sales].sort(
-    (a, b) =>
-      String(b.date).localeCompare(String(a.date))
+  document.getElementById(
+    "middlemanProfit"
+  ).textContent = money(
+    middlemanProfit
   );
 
-  if (sorted.length === 0) {
-    const row = salesTable.insertRow();
-    const cell = row.insertCell();
+  document.getElementById(
+    "stockProfit"
+  ).textContent = money(
+    stockProfit
+  );
+
+  document.getElementById(
+    "totalProfit"
+  ).textContent = money(
+    middlemanProfit + stockProfit
+  );
+
+  // Supabase already orders sales by
+  // date descending. No second sort.
+  const fragment =
+    document.createDocumentFragment();
+
+  if (sales.length === 0) {
+    const row = document.createElement(
+      "tr"
+    );
+
+    const cell = document.createElement(
+      "td"
+    );
 
     cell.colSpan = 6;
-    cell.textContent = "No sales recorded yet.";
+    cell.textContent =
+      "No sales recorded yet.";
+
     cell.style.textAlign = "center";
     cell.style.padding = "24px";
 
-    return;
+    row.appendChild(cell);
+    fragment.appendChild(row);
+  } else {
+    sales.forEach(sale => {
+      const row = document.createElement(
+        "tr"
+      );
+
+      if (isVoided(sale)) {
+        row.classList.add(
+          "sale-voided-row"
+        );
+      }
+
+      const values = [
+        sale.date,
+        sale.productName,
+        sale.type === "middleman"
+          ? "Middleman"
+          : "Own Stock",
+        money(sale.amount),
+        money(sale.profit)
+      ];
+
+      values.forEach(value => {
+        const cell = document.createElement(
+          "td"
+        );
+
+        cell.textContent = value ?? "";
+
+        row.appendChild(cell);
+      });
+
+      const actionsCell =
+        document.createElement("td");
+
+      const viewButton =
+        document.createElement("button");
+
+      viewButton.type = "button";
+      viewButton.className =
+        "sale-view-btn";
+
+      viewButton.textContent = "View";
+
+      // Store the sale ID on the button.
+      // One shared event listener handles
+      // all View buttons.
+      viewButton.dataset.saleId = sale.id;
+
+      actionsCell.appendChild(
+        viewButton
+      );
+
+      if (isVoided(sale)) {
+        const badge =
+          document.createElement("span");
+
+        badge.className =
+          "sale-voided-badge";
+
+        badge.textContent = "Voided";
+
+        actionsCell.appendChild(badge);
+      }
+
+      row.appendChild(actionsCell);
+      fragment.appendChild(row);
+    });
   }
 
-  sorted.forEach(sale => {
-    const row = salesTable.insertRow();
-
-    if (isVoided(sale)) {
-      row.classList.add("sale-voided-row");
-    }
-
-    [
-      sale.date,
-      sale.productName,
-      sale.type === "middleman"
-        ? "Middleman"
-        : "Own Stock",
-      money(sale.amount),
-      money(sale.profit)
-    ].forEach(value => {
-      row.insertCell().textContent = value;
-    });
-
-    const actionsCell = row.insertCell();
-
-    const viewButton = document.createElement("button");
-    viewButton.type = "button";
-    viewButton.className = "sale-view-btn";
-    viewButton.textContent = "View";
-
-    viewButton.addEventListener("click", () => {
-      showSaleDetails(sale.id);
-    });
-
-    actionsCell.appendChild(viewButton);
-
-    if (isVoided(sale)) {
-      const badge = document.createElement("span");
-
-      badge.className = "sale-voided-badge";
-      badge.textContent = "Voided";
-
-      actionsCell.appendChild(badge);
-    }
-  });
+  // One DOM update for the entire table.
+  salesTable.replaceChildren(fragment);
 }
+
+// =====================================
+// DELEGATED SALES TABLE EVENTS
+// =====================================
+
+salesTable.addEventListener(
+  "click",
+  event => {
+    if (busy) return;
+
+    const button = event.target.closest(
+      "button[data-sale-id]"
+    );
+
+    if (
+      !button ||
+      !salesTable.contains(button)
+    ) {
+      return;
+    }
+
+    showSaleDetails(
+      button.dataset.saleId
+    );
+  }
+);
 
 // =====================================
 // RECORD NEW SALE
@@ -457,7 +654,10 @@ async function recordSale(event) {
 
   const amount = Number(amountText);
   const expenses = Number(expensesText);
-  const date = document.getElementById("saleDate").value;
+
+  const date = document
+    .getElementById("saleDate")
+    .value;
 
   if (
     !amountText ||
@@ -472,6 +672,7 @@ async function recordSale(event) {
       "Please enter valid sale details.",
       "error"
     );
+
     return;
   }
 
@@ -501,13 +702,14 @@ async function recordSale(event) {
         "Enter valid supplier details.",
         "error"
       );
+
       return;
     }
   } else {
     productId = stockSelect.value;
 
-    const product = products.find(
-      item => item.id === productId
+    const product = productById.get(
+      productId
     );
 
     const quantityText = document
@@ -527,22 +729,26 @@ async function recordSale(event) {
         "Not enough stock available for this sale.",
         "error"
       );
+
       return;
     }
 
     productName = product.name;
   }
 
-  // Customer details are matched or created
-  // inside the PostgreSQL transaction.
+  // Customer details are matched or
+  // created inside PostgreSQL transaction.
 
   const customerName = document
     .getElementById("customerName")
     .value.trim();
 
-  const customerPhone = normalizeCustomerPhone(
-    document.getElementById("customerPhone").value.trim()
-  );
+  const customerPhone =
+    normalizeCustomerPhone(
+      document
+        .getElementById("customerPhone")
+        .value.trim()
+    );
 
   const customerEmail = document
     .getElementById("customerEmail")
@@ -550,18 +756,26 @@ async function recordSale(event) {
     .toLowerCase();
 
   const consent = document
-    .getElementById("customerMarketingConsent")
+    .getElementById(
+      "customerMarketingConsent"
+    )
     .checked;
 
   if (
-    (customerName || customerPhone || customerEmail) &&
-    (!customerName || (!customerPhone && !customerEmail))
+    (customerName ||
+      customerPhone ||
+      customerEmail) &&
+    (
+      !customerName ||
+      (!customerPhone && !customerEmail)
+    )
   ) {
     setMessage(
       "Enter a customer name and phone/email, " +
       "or leave all customer details empty.",
       "error"
     );
+
     return;
   }
 
@@ -571,6 +785,8 @@ async function recordSale(event) {
   setMessage("Recording sale...");
 
   try {
+    // Atomic database operation.
+    // Keep parameters unchanged.
     const { error } = await db.rpc(
       "timidy_record_sale",
       {
@@ -599,16 +815,17 @@ async function recordSale(event) {
       throw error;
     }
 
-    // The sale has been committed.
-    // Reset the form before refreshing so that
-    // a refresh failure does not encourage
-    // accidental duplicate submissions.
-
+    // Sale is committed. Reset first
+    // to prevent accidental duplicates.
     form.reset();
 
-    document.getElementById("saleExpenses").value = 0;
-    document.getElementById("saleDate").value =
-      getLocalDate();
+    document.getElementById(
+      "saleExpenses"
+    ).value = 0;
+
+    document.getElementById(
+      "saleDate"
+    ).value = getLocalDate();
 
     try {
       await refreshData();
@@ -630,7 +847,10 @@ async function recordSale(event) {
       );
     }
   } catch (error) {
-    console.error("Unable to record sale:", error);
+    console.error(
+      "Unable to record sale:",
+      error
+    );
 
     setMessage(
       "Sale not confirmed: " +
@@ -652,9 +872,13 @@ function createSaleDetailsModal() {
     return saleDetailsModal;
   }
 
-  const modal = document.createElement("div");
+  const modal = document.createElement(
+    "div"
+  );
 
-  modal.className = "sale-details-overlay";
+  modal.className =
+    "sale-details-overlay";
+
   modal.hidden = true;
 
   modal.innerHTML = `
@@ -702,28 +926,45 @@ function createSaleDetailsModal() {
 
   document.body.appendChild(modal);
 
-  modal.querySelector(".sale-details-close")
-    .addEventListener("click", closeSaleDetails);
+  modal.querySelector(
+    ".sale-details-close"
+  ).addEventListener(
+    "click",
+    closeSaleDetails
+  );
 
-  modal.addEventListener("click", event => {
-    if (event.target === modal) {
-      closeSaleDetails();
-    }
-  });
-
-  modal.querySelector("#downloadReceiptBtn")
-    .addEventListener("click", () => {
-      if (activeSaleId) {
-        downloadSaleReceipt(activeSaleId);
+  modal.addEventListener(
+    "click",
+    event => {
+      if (event.target === modal) {
+        closeSaleDetails();
       }
-    });
+    }
+  );
 
-  modal.querySelector("#voidSaleBtn")
-    .addEventListener("click", () => {
+  modal.querySelector(
+    "#downloadReceiptBtn"
+  ).addEventListener(
+    "click",
+    () => {
+      if (activeSaleId) {
+        downloadSaleReceipt(
+          activeSaleId
+        );
+      }
+    }
+  );
+
+  modal.querySelector(
+    "#voidSaleBtn"
+  ).addEventListener(
+    "click",
+    () => {
       if (activeSaleId) {
         voidSale(activeSaleId);
       }
-    });
+    }
+  );
 
   saleDetailsModal = modal;
 
@@ -736,27 +977,39 @@ function addDetailRow(
   value,
   className = ""
 ) {
-  const row = document.createElement("div");
+  const row = document.createElement(
+    "div"
+  );
+
   row.className = "sale-detail-row";
 
-  const labelElement = document.createElement("span");
-  labelElement.className = "sale-detail-label";
+  const labelElement =
+    document.createElement("span");
+
+  labelElement.className =
+    "sale-detail-label";
+
   labelElement.textContent = label;
 
-  const valueElement = document.createElement("strong");
+  const valueElement =
+    document.createElement("strong");
+
   valueElement.className =
     "sale-detail-value " + className;
 
-  valueElement.textContent = String(value ?? "—");
+  valueElement.textContent =
+    String(value ?? "—");
 
-  row.append(labelElement, valueElement);
+  row.append(
+    labelElement,
+    valueElement
+  );
+
   container.appendChild(row);
 }
 
 function showSaleDetails(saleId) {
-  const sale = sales.find(
-    item => item.id === saleId
-  );
+  const sale = saleById.get(saleId);
 
   if (!sale) {
     alert("Sale not found.");
@@ -774,9 +1027,23 @@ function showSaleDetails(saleId) {
 
   content.replaceChildren();
 
-  addDetailRow(content, "Transaction ID", sale.id);
-  addDetailRow(content, "Sale Date", sale.date);
-  addDetailRow(content, "Product", sale.productName);
+  addDetailRow(
+    content,
+    "Transaction ID",
+    sale.id
+  );
+
+  addDetailRow(
+    content,
+    "Sale Date",
+    sale.date
+  );
+
+  addDetailRow(
+    content,
+    "Product",
+    sale.productName
+  );
 
   addDetailRow(
     content,
@@ -833,8 +1100,11 @@ function showSaleDetails(saleId) {
     );
   }
 
-  const divider = document.createElement("hr");
-  divider.className = "sale-details-divider";
+  const divider =
+    document.createElement("hr");
+
+  divider.className =
+    "sale-details-divider";
 
   content.appendChild(divider);
 
@@ -867,18 +1137,24 @@ function showSaleDetails(saleId) {
       : "sale-profit-positive"
   );
 
-  const receiptButton = modal.querySelector(
-    "#downloadReceiptBtn"
-  );
+  const receiptButton =
+    modal.querySelector(
+      "#downloadReceiptBtn"
+    );
 
-  const voidButton = modal.querySelector(
-    "#voidSaleBtn"
-  );
+  const voidButton =
+    modal.querySelector(
+      "#voidSaleBtn"
+    );
 
-  receiptButton.hidden = isVoided(sale);
-  voidButton.hidden = isVoided(sale);
+  receiptButton.hidden =
+    isVoided(sale);
 
-  lastDetailsTrigger = document.activeElement;
+  voidButton.hidden =
+    isVoided(sale);
+
+  lastDetailsTrigger =
+    document.activeElement;
 
   modal.hidden = false;
 
@@ -911,16 +1187,19 @@ function closeSaleDetails() {
   }
 }
 
-document.addEventListener("keydown", event => {
-  if (
-    event.key === "Escape" &&
-    saleDetailsModal &&
-    !saleDetailsModal.hidden &&
-    !busy
-  ) {
-    closeSaleDetails();
+document.addEventListener(
+  "keydown",
+  event => {
+    if (
+      event.key === "Escape" &&
+      saleDetailsModal &&
+      !saleDetailsModal.hidden &&
+      !busy
+    ) {
+      closeSaleDetails();
+    }
   }
-});
+);
 
 // =====================================
 // VOID SALE
@@ -929,9 +1208,7 @@ document.addEventListener("keydown", event => {
 async function voidSale(saleId) {
   if (busy) return;
 
-  const sale = sales.find(
-    item => item.id === saleId
-  );
+  const sale = saleById.get(saleId);
 
   if (!sale) {
     alert("Sale not found.");
@@ -939,7 +1216,9 @@ async function voidSale(saleId) {
   }
 
   if (isVoided(sale)) {
-    alert("This sale has already been voided.");
+    alert(
+      "This sale has already been voided."
+    );
     return;
   }
 
@@ -962,16 +1241,21 @@ async function voidSale(saleId) {
 
   const reason = reasonInput.trim();
 
-  if (!reason || reason.length > 1000) {
+  if (
+    !reason ||
+    reason.length > 1000
+  ) {
     alert(
       "A reason of 1–1000 characters is required."
     );
+
     return;
   }
 
   setBusy(true);
 
   try {
+    // Atomic database operation.
     const { error } = await db.rpc(
       "timidy_void_sale",
       {
@@ -1027,37 +1311,67 @@ async function voidSale(saleId) {
 // PDF RECEIPT GENERATOR
 // =====================================
 
+// Cache the logo after its first load.
+let receiptLogoPromise = null;
+
 function loadReceiptLogo() {
-  return new Promise(resolve => {
-    const image = new Image();
+  if (receiptLogoPromise) {
+    return receiptLogoPromise;
+  }
 
-    image.onload = () => {
-      try {
-        const canvas = document.createElement(
-          "canvas"
-        );
+  receiptLogoPromise = new Promise(
+    resolve => {
+      const image = new Image();
 
-        canvas.width = image.naturalWidth;
-        canvas.height = image.naturalHeight;
+      image.onload = () => {
+        try {
+          const canvas =
+            document.createElement(
+              "canvas"
+            );
 
-        const context = canvas.getContext("2d");
+          canvas.width =
+            image.naturalWidth;
 
-        context.drawImage(image, 0, 0);
+          canvas.height =
+            image.naturalHeight;
 
-        resolve({
-          data: canvas.toDataURL("image/png"),
-          width: image.naturalWidth,
-          height: image.naturalHeight
-        });
-      } catch {
+          const context =
+            canvas.getContext("2d");
+
+          if (!context) {
+            resolve(null);
+            return;
+          }
+
+          context.drawImage(
+            image,
+            0,
+            0
+          );
+
+          resolve({
+            data: canvas.toDataURL(
+              "image/png"
+            ),
+            width: image.naturalWidth,
+            height: image.naturalHeight
+          });
+        } catch {
+          resolve(null);
+        }
+      };
+
+      image.onerror = () => {
         resolve(null);
-      }
-    };
+      };
 
-    image.onerror = () => resolve(null);
+      image.src =
+        "images/company-logo.png";
+    }
+  );
 
-    image.src = "images/company-logo.png";
-  });
+  return receiptLogoPromise;
 }
 
 function pdfSafeText(value) {
@@ -1066,9 +1380,7 @@ function pdfSafeText(value) {
 }
 
 async function downloadSaleReceipt(saleId) {
-  const sale = sales.find(
-    item => item.id === saleId
-  );
+  const sale = saleById.get(saleId);
 
   if (!sale) {
     alert("Sale not found.");
@@ -1090,13 +1402,15 @@ async function downloadSaleReceipt(saleId) {
       "PDF library is unavailable. " +
       "Check your internet connection and refresh."
     );
+
     return;
   }
 
   const customer = getSaleCustomer(sale);
-  const logo = await loadReceiptLogo();
 
   try {
+    const logo = await loadReceiptLogo();
+
     const { jsPDF } = window.jspdf;
 
     const pdf = new jsPDF({
@@ -1112,7 +1426,14 @@ async function downloadSaleReceipt(saleId) {
     const right = pageWidth - margin;
 
     pdf.setFillColor(22, 32, 52);
-    pdf.rect(0, 0, pageWidth, 45, "F");
+
+    pdf.rect(
+      0,
+      0,
+      pageWidth,
+      45,
+      "F"
+    );
 
     if (logo) {
       const ratio = Math.min(
@@ -1166,49 +1487,107 @@ async function downloadSaleReceipt(saleId) {
     y += 9;
 
     function drawField(label, value) {
-      pdf.setFont("helvetica", "normal");
+      pdf.setFont(
+        "helvetica",
+        "normal"
+      );
+
       pdf.setFontSize(9);
-      pdf.setTextColor(105, 115, 130);
+      pdf.setTextColor(
+        105,
+        115,
+        130
+      );
 
       pdf.text(label, margin, y);
 
-      pdf.setFont("helvetica", "bold");
-      pdf.setTextColor(35, 45, 65);
-
-      const lines = pdf.splitTextToSize(
-        pdfSafeText(value),
-        pageWidth - margin * 2 - 42
+      pdf.setFont(
+        "helvetica",
+        "bold"
       );
 
-      pdf.text(lines, right, y, {
-        align: "right"
-      });
+      pdf.setTextColor(
+        35,
+        45,
+        65
+      );
 
-      y += Math.max(8, lines.length * 5);
+      const lines =
+        pdf.splitTextToSize(
+          pdfSafeText(value),
+          pageWidth - margin * 2 - 42
+        );
+
+      pdf.text(
+        lines,
+        right,
+        y,
+        { align: "right" }
+      );
+
+      y += Math.max(
+        8,
+        lines.length * 5
+      );
     }
 
-    drawField("Receipt No.", sale.id);
-    drawField("Date", sale.date);
-    drawField("Customer", customer.name);
+    drawField(
+      "Receipt No.",
+      sale.id
+    );
+
+    drawField(
+      "Date",
+      sale.date
+    );
+
+    drawField(
+      "Customer",
+      customer.name
+    );
 
     if (customer.phone) {
-      drawField("Phone", customer.phone);
+      drawField(
+        "Phone",
+        customer.phone
+      );
     }
 
     if (customer.email) {
-      drawField("Email", customer.email);
+      drawField(
+        "Email",
+        customer.email
+      );
     }
 
     y += 3;
 
-    pdf.setDrawColor(220, 225, 232);
-    pdf.line(margin, y, right, y);
+    pdf.setDrawColor(
+      220,
+      225,
+      232
+    );
+
+    pdf.line(
+      margin,
+      y,
+      right,
+      y
+    );
 
     y += 11;
 
-    pdf.setFont("helvetica", "bold");
+    pdf.setFont(
+      "helvetica",
+      "bold"
+    );
+
     pdf.setFontSize(10);
-    pdf.setTextColor(35, 45, 65);
+    pdf.setTextColor(
+      35,
+      45,
+      65
+    );
 
     pdf.text(
       "PURCHASE DETAILS",
@@ -1237,7 +1616,11 @@ async function downloadSaleReceipt(saleId) {
 
     y += 5;
 
-    pdf.setFillColor(237, 242, 249);
+    pdf.setFillColor(
+      237,
+      242,
+      249
+    );
 
     pdf.roundedRect(
       margin,
@@ -1249,9 +1632,17 @@ async function downloadSaleReceipt(saleId) {
       "F"
     );
 
-    pdf.setFont("helvetica", "bold");
+    pdf.setFont(
+      "helvetica",
+      "bold"
+    );
+
     pdf.setFontSize(10);
-    pdf.setTextColor(35, 45, 65);
+    pdf.setTextColor(
+      35,
+      45,
+      65
+    );
 
     pdf.text(
       "TOTAL PAID",
@@ -1270,9 +1661,17 @@ async function downloadSaleReceipt(saleId) {
 
     y += 34;
 
-    pdf.setFont("helvetica", "normal");
+    pdf.setFont(
+      "helvetica",
+      "normal"
+    );
+
     pdf.setFontSize(9);
-    pdf.setTextColor(100, 110, 125);
+    pdf.setTextColor(
+      100,
+      110,
+      125
+    );
 
     pdf.text(
       "Thank you for shopping with Timidy Store!",
@@ -1290,13 +1689,18 @@ async function downloadSaleReceipt(saleId) {
       { align: "center" }
     );
 
-    const fileId = String(sale.id)
-      .replace(/[^a-zA-Z0-9_-]/g, "")
+    const fileId = String(
+      sale.id
+    )
+      .replace(
+        /[^a-zA-Z0-9_-]/g,
+        ""
+      )
       .slice(0, 36);
 
-    // Verify the sale is still active
-    // before saving the PDF.
-
+    // IMPORTANT:
+    // Verify the sale remains active
+    // before saving the receipt.
     const {
       data: latestSale,
       error: statusError
@@ -1315,11 +1719,14 @@ async function downloadSaleReceipt(saleId) {
         "Receipt cancelled because the sale " +
         "is no longer active."
       );
+
       return;
     }
 
     pdf.save(
-      `Timidy-Receipt-${fileId || "Sale"}.pdf`
+      `Timidy-Receipt-${
+        fileId || "Sale"
+      }.pdf`
     );
   } catch (error) {
     console.error(
@@ -1327,16 +1734,14 @@ async function downloadSaleReceipt(saleId) {
       error
     );
 
-    alert("Unable to generate receipt.");
+    alert(
+      "Unable to generate receipt."
+    );
   }
 }
 
 // =====================================
-// LIGHT / DARK MODE
-// =====================================
-
-// =====================================
-// INITIALIZATION
+// EVENTS
 // =====================================
 
 form.addEventListener(
@@ -1344,13 +1749,19 @@ form.addEventListener(
   recordSale
 );
 
-middlemanTab.addEventListener("click", () => {
-  changeSaleType("middleman");
-});
+middlemanTab.addEventListener(
+  "click",
+  () => {
+    changeSaleType("middleman");
+  }
+);
 
-stockTab.addEventListener("click", () => {
-  changeSaleType("stock");
-});
+stockTab.addEventListener(
+  "click",
+  () => {
+    changeSaleType("stock");
+  }
+);
 
 form.addEventListener(
   "input",
@@ -1362,10 +1773,15 @@ form.addEventListener(
   updateProfitPreview
 );
 
-document.getElementById("saleDate").value =
-  getLocalDate();
+document.getElementById(
+  "saleDate"
+).value = getLocalDate();
 
 changeSaleType("middleman");
+
+// =====================================
+// INITIALIZATION
+// =====================================
 
 async function initializeSales() {
   setBusy(true);
@@ -1375,11 +1791,16 @@ async function initializeSales() {
       await window.TimidyAuth.getAuthorizedUser();
 
     if (!user) {
-      window.location.replace("login.html");
+      window.location.replace(
+        "login.html"
+      );
+
       return;
     }
 
     await refreshData();
+
+    initialized = true;
   } catch (error) {
     console.error(
       "Unable to load sales:",
@@ -1397,6 +1818,74 @@ async function initializeSales() {
 }
 
 initializeSales();
+
+// =====================================
+// RETURNING TO SALES TAB
+// =====================================
+
+// Avoid refreshing after every brief
+// browser-tab switch. Only reload if
+// the last successful fetch is old.
+
+document.addEventListener(
+  "visibilitychange",
+  async () => {
+    if (
+      document.hidden ||
+      !initialized ||
+      busy
+    ) {
+      return;
+    }
+
+    const age =
+      Date.now() - lastDataRefresh;
+
+    if (
+      age < SALES_REFRESH_INTERVAL
+    ) {
+      return;
+    }
+
+    try {
+      // Re-check authorization before
+      // refreshing protected data.
+      const user =
+        await window.TimidyAuth.getAuthorizedUser();
+
+      if (!user) {
+        window.location.replace(
+          "login.html"
+        );
+
+        return;
+      }
+
+      // A sale must not be submitted
+      // while its source data refreshes.
+      if (busy) return;
+
+      setBusy(true);
+
+      try {
+        await refreshData();
+      } finally {
+        setBusy(false);
+      }
+    } catch (error) {
+      console.error(
+        "Sales background refresh failed:",
+        error
+      );
+
+      setMessage(
+        "Unable to refresh sales data. " +
+        "Reload the page before recording a sale.",
+        "error"
+      );
+    }
+  }
+);
 
 if (typeof lucide !== "undefined") {
   lucide.createIcons();
