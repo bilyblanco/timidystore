@@ -39,6 +39,21 @@ let lastSystemInfoRefresh = 0;
 let systemInfoPromise = null;
 let profileLoadPromise = null;
 
+
+// Privacy-safe diagnostics: never send passwords, profiles, backups, or raw errors.
+function reportSettingsError(operation, error) {
+  const raw = String(error?.code || "");
+  const code = /^(?:[0-9A-Za-z]{5}|PGRST[0-9]{3}|HTTP_[45][0-9]{2})$/.test(raw)
+    ? raw.toUpperCase() : "UNCLASSIFIED";
+  try {
+    void settingsDb.rpc("timidy_report_technical_error", {
+      p_module: "settings", p_operation: operation, p_code: code
+    }).then(({ error: logError }) => {
+      if (logError) console.warn("Technical diagnostic unavailable.");
+    }).catch(() => {});
+  } catch (_) { /* Never interfere with settings. */ }
+}
+
 // =====================================
 // HELPERS
 // =====================================
@@ -263,6 +278,7 @@ async function saveBusinessProfile(event) {
       "Business profile saved to Supabase successfully."
     );
   } catch (error) {
+    reportSettingsError("profile_save", error);
     console.error(
       "Unable to save business profile:",
       error
@@ -456,6 +472,7 @@ async function updateSettingsSystemInfo(
   try {
     return await request;
   } catch (error) {
+    reportSettingsError("system_info", error);
     console.error(
       "Unable to load system information:",
       error
@@ -625,6 +642,7 @@ async function downloadSettingsBackup() {
       "Keep it somewhere secure."
     );
   } catch (error) {
+    reportSettingsError("backup", error);
     console.error(
       "Unable to generate backup:",
       error
@@ -754,6 +772,7 @@ async function changeAdminPassword(event) {
       "Your administrator password has been updated."
     );
   } catch (error) {
+    reportSettingsError("password_change", error);
     console.error(
       "Unable to change password:",
       error
@@ -789,6 +808,7 @@ async function logoutSettingsAdmin() {
     // authorization cache is cleared.
     await window.TimidyAuth.logout();
   } catch (error) {
+    reportSettingsError("logout", error);
     console.error(
       "Unable to log out:",
       error
@@ -865,6 +885,7 @@ async function initializeSettings() {
 
     settingsInitialized = true;
   } catch (error) {
+    reportSettingsError("initialize", error);
     console.error(
       "Unable to initialize Settings:",
       error
@@ -937,4 +958,3 @@ if (document.readyState === "loading") {
 } else {
   initializeSettings();
 }
-

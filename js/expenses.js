@@ -8,6 +8,30 @@
 
 const db = window.timidySupabase;
 
+// PRIVACY-SAFE TECHNICAL ERROR REPORTING
+// Only fixed operation names and approved codes are transmitted.
+// Never transmit raw messages, customer/expense data, or identifiers.
+const EXPENSES_SAFE_OPERATIONS = new Set(['load', 'save', 'save_refresh', 'delete', 'delete_refresh', 'background_refresh']);
+
+function reportExpensesError(operation, error) {
+  if (!EXPENSES_SAFE_OPERATIONS.has(operation)) return;
+  const raw = String(error?.code || "").toUpperCase();
+  const code = /^(?:[0-9A-Z]{5}|PGRST[0-9]{3}|HTTP_[45][0-9]{2})$/.test(raw)
+    ? raw : "UNCLASSIFIED";
+  try {
+    void db.rpc("timidy_report_technical_error", {
+      p_module: "expenses", p_operation: operation, p_code: code
+    }).then(({ error: reportingError }) => {
+      if (reportingError) console.warn("Technical error reporting unavailable.");
+    }).catch(() => {
+      console.warn("Technical error reporting unavailable.");
+    });
+  } catch (_) {
+    // Logging must never affect business operations.
+  }
+}
+
+
 if (!db) {
   throw new Error("Supabase is not configured.");
 }
@@ -626,6 +650,7 @@ async function deleteExpense(id) {
       "Unable to delete expense:",
       error
     );
+    reportExpensesError(committed ? "delete_refresh" : "delete", error);
 
     showMessage(
       committed
@@ -751,6 +776,7 @@ async function saveExpense(event) {
       "Unable to save expense:",
       error
     );
+    reportExpensesError(committed ? "save_refresh" : "save", error);
 
     showMessage(
       committed
@@ -874,6 +900,7 @@ async function initializeExpenses() {
       "Unable to load expenses:",
       error
     );
+    reportExpensesError("load", error);
 
     showMessage(
       "Unable to load expenses: " +
@@ -932,6 +959,7 @@ document.addEventListener(
         "Expenses background refresh failed:",
         error
       );
+      reportExpensesError("background_refresh", error);
 
       showMessage(
         "Unable to refresh expenses. " +

@@ -26,6 +26,46 @@ if (!db) {
   throw new Error("Supabase is not configured.");
 }
 
+
+// ========================================
+// PRIVACY-SAFE TECHNICAL ERROR REPORTING
+// ========================================
+// Only fixed module/operation labels and a
+// whitelisted PostgreSQL/HTTP error code.
+// Never transmits messages or business values.
+
+const INVENTORY_SAFE_OPERATIONS = new Set([
+  "load", "history", "add", "edit", "restock",
+  "adjust", "archive", "restore", "delete",
+  "background_refresh"
+]);
+
+function reportInventoryError(operation, error) {
+  if (!INVENTORY_SAFE_OPERATIONS.has(operation)) return;
+
+  const rawCode = String(error?.code || "");
+  const code = /^(?:[0-9A-Z]{5}|PGRST[0-9]{3}|HTTP_[45][0-9]{2})$/.test(rawCode)
+    ? rawCode
+    : "UNCLASSIFIED";
+
+  // Fire-and-forget: logging cannot change inventory outcomes.
+  try {
+    void db.rpc("timidy_report_technical_error", {
+      p_module: "inventory",
+      p_operation: operation,
+      p_code: code
+    }).then(({ error: reportError }) => {
+      if (reportError) {
+        console.warn("Technical error reporting unavailable.");
+      }
+    }).catch(() => {
+      console.warn("Technical error reporting unavailable.");
+    });
+  } catch (_) {
+    // Reporting is never allowed to interrupt store operations.
+  }
+}
+
 // ========================================
 // ELEMENTS
 // ========================================
@@ -722,6 +762,7 @@ async function addProduct(event) {
       "success"
     );
   } catch (error) {
+    reportInventoryError("add", error);
     showError(
       committed
         ? "Product added, but refresh failed. Reload the page."
@@ -857,6 +898,7 @@ async function openEditProduct(productId) {
       "success"
     );
   } catch (error) {
+    reportInventoryError("edit", error);
     showError(
       committed
         ? "Product updated, but refresh failed. Reload the page."
@@ -961,6 +1003,7 @@ async function openRestockProduct(productId) {
       "success"
     );
   } catch (error) {
+    reportInventoryError("restock", error);
     showError(
       committed
         ? "Restock saved, but refresh failed. Reload before trying again."
@@ -1092,6 +1135,7 @@ async function adjustStock(productId) {
       "success"
     );
   } catch (error) {
+    reportInventoryError("adjust", error);
     showError(
       committed
         ? "Adjustment saved, but refresh failed. Reload the page."
@@ -1160,6 +1204,7 @@ async function setProductArchived(
       "success"
     );
   } catch (error) {
+    reportInventoryError(shouldArchive ? "archive" : "restore", error);
     showError(
       committed
         ? `${action} succeeded, but refresh failed. Reload the page.`
@@ -1237,6 +1282,7 @@ async function deleteProduct(productId) {
       "success"
     );
   } catch (error) {
+    reportInventoryError("delete", error);
     showError(
       committed
         ? "Product deleted, but refresh failed. Reload the page."
@@ -1895,6 +1941,7 @@ async function showProductHistory(productId) {
 
     rows.replaceChildren(fragment);
   } catch (error) {
+    reportInventoryError("history", error);
     if (
       modal.hidden ||
       requestId !== historyRequestId
@@ -2081,6 +2128,7 @@ async function initializeInventory() {
 
     await loadProducts();
   } catch (error) {
+    reportInventoryError("load", error);
     showError(
       "Unable to load inventory.",
       error
@@ -2132,6 +2180,7 @@ document.addEventListener(
 
       await loadProducts();
     } catch (error) {
+    reportInventoryError("background_refresh", error);
       console.error(
         "Inventory background refresh failed:",
         error

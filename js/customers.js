@@ -8,6 +8,30 @@
 
 const db = window.timidySupabase;
 
+// PRIVACY-SAFE TECHNICAL ERROR REPORTING
+// Only fixed operation names and approved codes are transmitted.
+// Never transmit raw messages, customer/expense data, or identifiers.
+const CUSTOMERS_SAFE_OPERATIONS = new Set(['load', 'save', 'save_refresh', 'background_refresh']);
+
+function reportCustomersError(operation, error) {
+  if (!CUSTOMERS_SAFE_OPERATIONS.has(operation)) return;
+  const raw = String(error?.code || "").toUpperCase();
+  const code = /^(?:[0-9A-Z]{5}|PGRST[0-9]{3}|HTTP_[45][0-9]{2})$/.test(raw)
+    ? raw : "UNCLASSIFIED";
+  try {
+    void db.rpc("timidy_report_technical_error", {
+      p_module: "customers", p_operation: operation, p_code: code
+    }).then(({ error: reportingError }) => {
+      if (reportingError) console.warn("Technical error reporting unavailable.");
+    }).catch(() => {
+      console.warn("Technical error reporting unavailable.");
+    });
+  } catch (_) {
+    // Logging must never affect business operations.
+  }
+}
+
+
 if (!db) {
   throw new Error("Supabase is not configured.");
 }
@@ -816,6 +840,7 @@ async function saveCustomer(event) {
       "Unable to save customer:",
       error
     );
+    reportCustomersError(committed ? "save_refresh" : "save", error);
 
     if (committed) {
       setMessage(
@@ -910,6 +935,7 @@ async function initializeCustomers() {
       "Unable to load customers:",
       error
     );
+    reportCustomersError("load", error);
 
     setMessage(
       "Unable to load customers: " +
@@ -962,6 +988,7 @@ document.addEventListener(
         "Customers background refresh failed:",
         error
       );
+      reportCustomersError("background_refresh", error);
 
       setMessage(
         "Unable to refresh customers. " +

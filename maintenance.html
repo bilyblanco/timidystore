@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
+  <title>Developer Error Center | Timidy Store</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/supabase-config.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #0c1423;
+      color: #f8fafc;
+      font-family: Inter, system-ui, Arial, sans-serif;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding: 20px max(24px, calc((100vw - 1150px) / 2));
+      border-bottom: 1px solid #27354b;
+      background: #142137;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-icon {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: #2563eb;
+      font-size: 21px;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 16px;
+    }
+
+    .brand small {
+      display: block;
+      margin-top: 4px;
+      color: #a8bad2;
+      font-size: 12px;
+    }
+
+    .logout {
+      padding: 10px 15px;
+      border: 1px solid #475569;
+      border-radius: 9px;
+      background: transparent;
+      color: #f8fafc;
+    }
+
+    .logout:hover {
+      background: #24344c;
+    }
+
+    main {
+      width: min(1150px, calc(100% - 40px));
+      margin: 36px auto 70px;
+    }
+
+    .page-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 18px;
+      margin-bottom: 28px;
+    }
+
+    .eyebrow {
+      color: #93c5fd;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+    }
+
+    h1 {
+      margin: 10px 0;
+      font-size: clamp(25px, 4vw, 34px);
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    p {
+      color: #aebed2;
+      line-height: 1.6;
+    }
+
+    .refresh {
+      padding: 12px 17px;
+      border: 1px solid #3b82f6;
+      border-radius: 10px;
+      background: #1d4ed8;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .refresh:hover {
+      background: #2563eb;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(
+        3,
+        minmax(0, 1fr)
+      );
+      gap: 17px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      padding: 23px;
+      border: 1px solid #2b3b52;
+      border-radius: 16px;
+      background: #17243a;
+      min-width: 0;
+    }
+
+    .card-label {
+      margin: 0 0 12px;
+      color: #aebed2;
+      font-size: 13px;
+    }
+
+    .status-value {
+      display: block;
+      font-size: 18px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .status-value.good {
+      color: #86efac;
+    }
+
+    .status-value.bad {
+      color: #fca5a5;
+    }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 20px;
+    }
+
+    .full-width {
+      grid-column: 1 / -1;
+    }
+
+    .setting {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 15px;
+      padding: 17px 0;
+      border-bottom: 1px solid #2b3b52;
+    }
+
+    .setting:last-child {
+      border-bottom: 0;
+    }
+
+    .setting strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .setting small {
+      display: block;
+      margin-top: 5px;
+      color: #aebed2;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .setting input {
+      flex-shrink: 0;
+      width: 21px;
+      height: 21px;
+      accent-color: #3b82f6;
+      cursor: pointer;
+    }
+
+    .notice {
+      margin-top: 18px;
+      padding: 13px 15px;
+      border: 1px solid #37537a;
+      border-radius: 10px;
+      background: #1b3050;
+      color: #bfdbfe;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .events {
+      list-style: none;
+      padding: 0;
+      margin: 15px 0 0;
+    }
+
+    .events li {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 13px 0;
+      border-bottom: 1px solid #2b3b52;
+      font-size: 13px;
+    }
+
+    .events li:last-child {
+      border-bottom: 0;
+    }
+
+    .events time {
+      color: #94a3b8;
+      font-size: 12px;
+    }
+
+    .account-email {
+      overflow-wrap: anywhere;
+      color: #93c5fd;
+      font-weight: 600;
+    }
+
+    .password-form {
+      display: grid;
+      gap: 12px;
+      margin-top: 17px;
+    }
+
+    .password-form label {
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .password-form input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #475569;
+      border-radius: 9px;
+      background: #0f1b2e;
+      color: #fff;
+    }
+
+    .password-form button {
+      padding: 12px;
+      border: 0;
+      border-radius: 9px;
+      background: #2563eb;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .feedback {
+      min-height: 22px;
+      margin-top: 18px;
+      color: #86efac;
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .feedback.error {
+      color: #fca5a5;
+    }
+
+    .loading {
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      padding: 24px;
+      color: #bfdbfe;
+      text-align: center;
+    }
+
+
+    .error-tools { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }
+    .error-tools button { padding:10px 14px; border-radius:9px; border:1px solid #3b82f6; background:#1d4ed8; color:white; }
+    .error-tools button:disabled { opacity:.55; }
+    .error-table-wrap { overflow-x:auto; }
+    .error-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .error-table th, .error-table td { text-align:left; padding:12px 10px; border-bottom:1px solid #2b3b52; }
+    .error-table th { color:#aebed2; }
+    .error-table td { overflow-wrap:anywhere; }
+    .error-empty { color:#aebed2; }
+
+    @media (max-width: 800px) {
+      .status-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .content-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div
+    id="loadingScreen"
+    class="loading"
+    role="status"
+  >
+    Verifying developer maintenance access...
+  </div>
+
+  <div id="maintenanceApp" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-icon">⚙</div>
+
+        <div>
+          <strong>Timidy Store</strong>
+          <small>Developer Maintenance</small>
+        </div>
+      </div>
+
+      <button
+        id="logoutButton"
+        type="button"
+        class="logout"
+      >
+        Sign Out
+      </button>
+    </header>
+
+    <main>
+      <section class="page-heading">
+        <div>
+          <div class="eyebrow">
+            Restricted Technical Access
+          </div>
+
+          <h1>Maintenance Dashboard</h1>
+
+          <p>
+            Diagnose system health and manage approved
+            technical settings without accessing
+            private business records.
+          </p>
+        </div>
+
+        <button
+          id="refreshButton"
+          type="button"
+          class="refresh"
+        >
+          Run Diagnostics
+        </button>
+      </section>
+
+      <section
+        class="status-grid"
+        aria-label="System status"
+      >
+        <article class="card">
+          <p class="card-label">Database Connection</p>
+
+          <span
+            id="databaseStatus"
+            class="status-value"
+          >
+            Checking...
+          </span>
+        </article>
+
+        <article class="card">
+          <p class="card-label">Authentication</p>
+
+          <span
+            id="authStatus"
+            class="status-value"
+          >
+            Checking...
+          </span>
+        </article>
+
+        <article class="card">
+          <p class="card-label">Maintenance Role</p>
+
+          <span
+            id="roleStatus"
+            class="status-value"
+          >
+            Checking...
+          </span>
+        </article>
+      </section>
+
+      <div class="content-grid">
+        <section class="card">
+          <h2>Technical Settings</h2>
+
+          <p>
+            These settings are isolated from business
+            records and cannot change sales or finances.
+          </p>
+
+          <div class="setting">
+            <div>
+              <strong>Diagnostic Mode</strong>
+
+              <small>
+                Store a flag for optional enhanced
+                system diagnostics.
+              </small>
+            </div>
+
+            <input
+              id="diagnosticMode"
+              type="checkbox"
+              data-setting="diagnostic_mode"
+              aria-label="Diagnostic mode"
+            >
+          </div>
+
+          <div class="setting">
+            <div>
+              <strong>Verbose Client Logging</strong>
+
+              <small>
+                Store a flag for future sanitized
+                browser diagnostics.
+              </small>
+            </div>
+
+            <input
+              id="verboseLogging"
+              type="checkbox"
+              data-setting="verbose_client_logging"
+              aria-label="Verbose client logging"
+            >
+          </div>
+
+          <div class="setting">
+            <div>
+              <strong>Maintenance Banner</strong>
+
+              <small>
+                Store a flag for an optional
+                technical status banner.
+              </small>
+            </div>
+
+            <input
+              id="maintenanceBanner"
+              type="checkbox"
+              data-setting="maintenance_banner"
+              aria-label="Maintenance banner"
+            >
+          </div>
+
+          <div class="notice">
+            These flags are saved in Supabase.
+            They do not affect Allan's live dashboard
+            until the application explicitly supports them.
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Developer Account</h2>
+
+          <p>
+            Signed in as
+            <span
+              id="accountEmail"
+              class="account-email"
+            ></span>
+          </p>
+
+          <p>
+            Your password is managed by Supabase Auth.
+            It is not stored in the maintenance database.
+          </p>
+
+          <form
+            id="passwordForm"
+            class="password-form"
+          >
+            <label for="newPassword">
+              New Password
+            </label>
+
+            <input
+              id="newPassword"
+              type="password"
+              minlength="12"
+              autocomplete="new-password"
+              required
+            >
+
+            <label for="confirmPassword">
+              Confirm New Password
+            </label>
+
+            <input
+              id="confirmPassword"
+              type="password"
+              minlength="12"
+              autocomplete="new-password"
+              required
+            >
+
+            <button type="submit">
+              Change My Password
+            </button>
+          </form>
+
+          <div class="notice">
+            Maintenance access is permanent until
+            an authorized database administrator
+            explicitly revokes it.
+          </div>
+        </section>
+
+
+
+        <section class="card full-width">
+          <h2>Database Structure Checker</h2>
+          <p>Checks approved table, column and function names only. No business rows are read.</p>
+          <div class="error-tools">
+            <button id="structureButton" type="button">Check Structure</button>
+          </div>
+          <p id="structureSummary" role="status">Not checked yet.</p>
+          <p id="structureCheckedAt"></p>
+          <div class="content-grid">
+            <div><h3>Tables</h3><ul id="tableChecks" class="events"><li>Waiting...</li></ul></div>
+            <div><h3>Columns</h3><ul id="columnChecks" class="events"><li>Waiting...</li></ul></div>
+            <div class="full-width"><h3>Functions</h3><ul id="functionChecks" class="events"><li>Waiting...</li></ul></div>
+          </div>
+          <div class="notice">Existence checks do not verify function behavior or RLS policies.</div>
+        </section>
+
+        <section class="card full-width">
+          <h2>Technical Error Center</h2>
+          <p>
+            Recent approved error codes from inventory operations.
+            No product, customer, quantity, price or raw error
+            message is stored here.
+          </p>
+          <div class="error-tools">
+            <button id="loadErrorsButton" type="button">Refresh Errors</button>
+            <button id="copyErrorsButton" type="button">Copy Diagnostic Report</button>
+          </div>
+          <p id="errorCenterStatus" role="status" aria-live="polite">
+            Waiting for diagnostics...
+          </p>
+          <div class="error-table-wrap">
+            <table class="error-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Module</th>
+                  <th>Operation</th>
+                  <th>Error Code</th>
+                </tr>
+              </thead>
+              <tbody id="technicalErrorRows">
+                <tr><td colspan="4">No errors loaded yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="notice">
+            These are error signals, not proof that a transaction
+            failed. Check the store state before retrying an operation.
+          </div>
+        </section>
+
+        <section class="card full-width">
+          <h2>Technical Activity Log</h2>
+
+          <p>
+            Only approved maintenance-setting changes
+            appear here. No customer, sales or
+            financial details are recorded.
+          </p>
+
+          <ul
+            id="eventList"
+            class="events"
+            aria-live="polite"
+          >
+            <li>Loading technical events...</li>
+          </ul>
+        </section>
+      </div>
+
+      <p
+        id="maintenanceMessage"
+        class="feedback"
+        role="status"
+        aria-live="polite"
+      ></p>
+    </main>
+  </div>
+
+  <script src="js/maintenance.js" defer></script>
+</body>
+</html>

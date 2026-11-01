@@ -12,6 +12,46 @@ if (!db) {
   throw new Error("Supabase is not configured.");
 }
 
+
+
+// =====================================
+// PRIVACY-SAFE SALES ERROR REPORTING
+// =====================================
+// Fixed operation names + approved error codes.
+// Never sends transaction/customer details,
+// amounts, product names, IMEI, or raw messages.
+
+const SALES_SAFE_OPERATIONS = new Set([
+  "load", "record", "record_refresh",
+  "void", "void_refresh", "receipt",
+  "receipt_status", "background_refresh"
+]);
+
+function reportSalesError(operation, error) {
+  if (!SALES_SAFE_OPERATIONS.has(operation)) return;
+
+  const rawCode = String(error?.code || "").toUpperCase();
+  const code = /^(?:[0-9A-Z]{5}|PGRST[0-9]{3}|HTTP_[45][0-9]{2})$/.test(rawCode)
+    ? rawCode
+    : "UNCLASSIFIED";
+
+  try {
+    void db.rpc("timidy_report_technical_error", {
+      p_module: "sales",
+      p_operation: operation,
+      p_code: code
+    }).then(({ error: reportError }) => {
+      if (reportError) {
+        console.warn("Technical error reporting unavailable.");
+      }
+    }).catch(() => {
+      console.warn("Technical error reporting unavailable.");
+    });
+  } catch (_) {
+    // Reporting must never change a sale's outcome.
+  }
+}
+
 const form = document.getElementById("saleForm");
 const middlemanTab = document.getElementById("middlemanTab");
 const stockTab = document.getElementById("stockTab");
@@ -795,6 +835,8 @@ async function recordSale(event) {
         "success"
       );
     } catch (refreshError) {
+      reportSalesError("record_refresh", refreshError);
+
       console.error(
         "Sale saved, but refresh failed:",
         refreshError
@@ -807,6 +849,8 @@ async function recordSale(event) {
       );
     }
   } catch (error) {
+    reportSalesError("record", error);
+
     console.error(
       "Unable to record sale:",
       error
@@ -1234,6 +1278,8 @@ async function voidSale(saleId) {
         "success"
       );
     } catch (refreshError) {
+      reportSalesError("void_refresh", refreshError);
+
       console.error(
         "Void saved, but refresh failed:",
         refreshError
@@ -1246,6 +1292,8 @@ async function voidSale(saleId) {
       );
     }
   } catch (error) {
+    reportSalesError("void", error);
+
     console.error(
       "Unable to void sale:",
       error
@@ -1581,6 +1629,10 @@ async function downloadSaleReceipt(saleId) {
       .eq("id", saleId)
       .maybeSingle();
 
+    if (statusError) {
+      reportSalesError("receipt_status", statusError);
+    }
+
     if (
       statusError ||
       !latestSale ||
@@ -1598,6 +1650,8 @@ async function downloadSaleReceipt(saleId) {
       `Timidy-Receipt-${fileId || "Sale"}.pdf`
     );
   } catch (error) {
+    reportSalesError("receipt", error);
+
     console.error(
       "Receipt generation failed:",
       error
@@ -1664,6 +1718,8 @@ async function initializeSales() {
     await refreshData();
     initialized = true;
   } catch (error) {
+    reportSalesError("load", error);
+
     console.error(
       "Unable to load sales:",
       error
@@ -1722,6 +1778,8 @@ document.addEventListener(
         setBusy(false);
       }
     } catch (error) {
+      reportSalesError("background_refresh", error);
+
       console.error(
         "Sales background refresh failed:",
         error

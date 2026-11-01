@@ -34,6 +34,21 @@ let lastDataRefresh = 0;
 
 const REPORT_REFRESH_INTERVAL = 60 * 1000;
 
+
+// Privacy-safe technical diagnostics: no financial data or raw error messages.
+function reportReportsError(operation, error) {
+  const raw = String(error?.code || "");
+  const code = /^(?:[0-9A-Za-z]{5}|PGRST[0-9]{3}|HTTP_[45][0-9]{2})$/.test(raw)
+    ? raw.toUpperCase() : "UNCLASSIFIED";
+  try {
+    void db.rpc("timidy_report_technical_error", {
+      p_module: "reports", p_operation: operation, p_code: code
+    }).then(({ error: logError }) => {
+      if (logError) console.warn("Technical diagnostic unavailable.");
+    }).catch(() => {});
+  } catch (_) { /* Never interfere with reporting. */ }
+}
+
 // =====================================
 // HELPERS
 // =====================================
@@ -76,6 +91,7 @@ function mapExpense(row) {
 }
 
 function showError(error) {
+  reportReportsError("load", error);
   console.error("Reports error:", error);
 
   setMessage(
@@ -718,6 +734,7 @@ async function refreshReports(force = false) {
 
 async function downloadPDF() {
   if (!window.jspdf?.jsPDF) {
+    reportReportsError("pdf_export", { code: "UNCLASSIFIED" });
     setMessage(
       "PDF library did not load. " +
       "Check your connection.",
@@ -1063,6 +1080,7 @@ async function downloadPDF() {
     renderReport();
 
   } catch (error) {
+    reportReportsError("pdf_export", error);
     console.error(error);
 
     setMessage(
@@ -1081,6 +1099,7 @@ async function downloadPDF() {
 
 async function downloadExcel() {
   if (!window.ExcelJS) {
+    reportReportsError("excel_export", { code: "UNCLASSIFIED" });
     setMessage(
       "ExcelJS library did not load. " +
       "Check your connection.",
@@ -1532,6 +1551,7 @@ async function downloadExcel() {
     renderReport();
 
   } catch (error) {
+    reportReportsError("excel_export", error);
     console.error(error);
 
     setMessage(
