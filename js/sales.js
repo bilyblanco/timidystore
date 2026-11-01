@@ -1,9 +1,9 @@
-
 "use strict";
 
 // =====================================
 // TIMIDY STORE — SUPABASE SALES
 // Optional IMEI / serial number support
+// Archived inventory excluded from sales
 // =====================================
 
 const db = window.timidySupabase;
@@ -96,10 +96,12 @@ function setDetailsMessage(text, type = "error") {
     detailsMessage.textContent = text;
     detailsMessage.className =
       "sale-message " + type;
+
     detailsMessage.setAttribute(
       "role",
       type === "error" ? "alert" : "status"
     );
+
     return;
   }
 
@@ -168,7 +170,8 @@ function mapProduct(row) {
     quantity: Number(row.quantity || 0),
     purchasePrice: Number(
       row.purchase_price || 0
-    )
+    ),
+    isArchived: row.is_archived === true
   };
 }
 
@@ -235,7 +238,7 @@ async function refreshData() {
     db
       .from("inventory")
       .select(
-        "id,name,quantity,purchase_price"
+        "id,name,quantity,purchase_price,is_archived"
       )
       .order("name", {
         ascending: true
@@ -392,7 +395,12 @@ function renderStockOptions() {
   let selectedStillAvailable = false;
 
   products.forEach(product => {
-    if (product.quantity <= 0) return;
+    if (
+      product.isArchived ||
+      product.quantity <= 0
+    ) {
+      return;
+    }
 
     const option = new Option(
       `${product.name} (${product.quantity} available)`,
@@ -430,7 +438,12 @@ function calculateProfit() {
       stockSelect.value
     );
 
-    if (!product) return 0;
+    if (
+      !product ||
+      product.isArchived
+    ) {
+      return 0;
+    }
 
     cost =
       product.purchasePrice *
@@ -667,13 +680,15 @@ async function recordSale(event) {
 
     if (
       !product ||
+      product.isArchived ||
       !quantityText ||
       !Number.isSafeInteger(quantity) ||
       quantity < 1 ||
       quantity > product.quantity
     ) {
       setMessage(
-        "Not enough stock available for this sale.",
+        "This product is archived, unavailable, " +
+        "or has insufficient stock.",
         "error"
       );
       return;
@@ -703,9 +718,6 @@ async function recordSale(event) {
     )
     .checked;
 
-  // Customer name and phone must be
-  // provided together, or both left blank.
-  // IMEI does NOT affect this validation.
   if (
     (customerName || customerPhone) &&
     (!customerName || !customerPhone)
@@ -735,9 +747,6 @@ async function recordSale(event) {
   setMessage("Recording sale...");
 
   try {
-    // New RPC wraps the original atomic
-    // checkout function and stores IMEI
-    // within the same DB transaction.
     const { error } = await db.rpc(
       "timidy_record_sale_with_imei",
       {
@@ -764,8 +773,6 @@ async function recordSale(event) {
 
     if (error) throw error;
 
-    // The database transaction succeeded.
-    // Reset before attempting a refresh.
     form.reset();
 
     document.getElementById(
@@ -1497,7 +1504,6 @@ async function downloadSaleReceipt(saleId) {
         : "Own Stock Sale"
     );
 
-    // IMEI is printed only when recorded.
     if (sale.imei) {
       drawField(
         "IMEI / Serial No.",
@@ -1566,8 +1572,6 @@ async function downloadSaleReceipt(saleId) {
       .replace(/[^a-zA-Z0-9_-]/g, "")
       .slice(0, 36);
 
-    // Verify the sale is still active
-    // immediately before downloading.
     const {
       data: latestSale,
       error: statusError

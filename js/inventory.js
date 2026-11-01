@@ -1,17 +1,23 @@
-
 "use strict";
 
 // ========================================
-// TIMIDY STORE — SUPABASE INVENTORY
-// Optimized loading, search and rendering
+// TIMIDY STORE — INVENTORY MANAGEMENT
+// ========================================
 //
-// DELETE BEHAVIOR:
-// Edit -> clear ALL four editable fields
-// -> press OK on every prompt
-// -> confirm permanent deletion.
+// Features:
+// - Add product
+// - Edit product details
+// - Restock product
+// - Adjust stock with reason
+// - Archive / Restore
+// - Explicit permanent deletion
+// - Stock history with notes
+// - Active / Archived / All filters
+// - Search
+// - Product Actions popup
+// - Protected Supabase operations
+// - Background refresh
 //
-// Deletion requires a secure Supabase RPC:
-// public.timidy_delete_product(p_product_id)
 // ========================================
 
 const db = window.timidySupabase;
@@ -20,10 +26,21 @@ if (!db) {
   throw new Error("Supabase is not configured.");
 }
 
+// ========================================
+// ELEMENTS
+// ========================================
+
 const form = document.getElementById("productForm");
 const table = document.getElementById("inventoryTable");
 const search = document.getElementById("searchProduct");
+const filterTabs = document.getElementById("inventoryFilterTabs");
 const message = document.getElementById("inventoryMessage");
+
+const INVENTORY_REFRESH_INTERVAL = 60 * 1000;
+
+// ========================================
+// STATE
+// ========================================
 
 let products = [];
 let productById = new Map();
@@ -32,16 +49,17 @@ let busy = false;
 let initialized = false;
 let lastDataRefresh = 0;
 let refreshPromise = null;
-
-const INVENTORY_REFRESH_INTERVAL = 60 * 1000;
-
-// Search debounce timer
 let searchTimer = null;
 
-// History modal state
+let selectedInventoryFilter = "active";
+
 let historyModal = null;
 let lastHistoryTrigger = null;
 let historyRequestId = 0;
+
+let productActionsModal = null;
+let activeActionsProductId = null;
+let lastActionsTrigger = null;
 
 // ========================================
 // UTILITIES
@@ -61,19 +79,15 @@ function createId() {
   );
 }
 
-const formatMoney = amount =>
-  "TZS " + Number(amount || 0).toLocaleString(
-    "en-TZ",
-    { maximumFractionDigits: 2 }
-  );
-
-function showError(errorMessage, error) {
-  console.error(errorMessage, error);
-
-  showMessage(
-    `${errorMessage}\n` +
-    (error?.message || "Please try again."),
-    "error"
+function formatMoney(amount) {
+  return (
+    "TZS " +
+    Number(amount || 0).toLocaleString(
+      "en-TZ",
+      {
+        maximumFractionDigits: 2
+      }
+    )
   );
 }
 
@@ -82,31 +96,65 @@ function showMessage(text, type = "") {
 
   message.textContent = text;
   message.className = "sale-message " + type;
+
   message.setAttribute(
     "role",
     type === "error" ? "alert" : "status"
   );
 }
 
+function showError(text, error) {
+  console.error(text, error);
+
+  showMessage(
+    text + "\n" +
+    (error?.message || "Please try again."),
+    "error"
+  );
+}
+
+function refreshIcons() {
+  if (
+    typeof lucide !== "undefined" &&
+    typeof lucide.createIcons === "function"
+  ) {
+    lucide.createIcons();
+  }
+}
+
 function setBusy(value) {
   busy = value;
 
   if (form) {
-    const submit = form.querySelector(
-      '[type="submit"]'
-    );
-
-    if (submit) {
-      submit.disabled = value;
-    }
+    form.querySelectorAll(
+      "input, select, button"
+    ).forEach(element => {
+      element.disabled = value;
+    });
   }
 
   if (table) {
-    table.querySelectorAll("button").forEach(
-      button => {
-        button.disabled = value;
-      }
-    );
+    table.querySelectorAll(
+      "button"
+    ).forEach(button => {
+      button.disabled = value;
+    });
+  }
+
+  if (filterTabs) {
+    filterTabs.querySelectorAll(
+      "button"
+    ).forEach(button => {
+      button.disabled = value;
+    });
+  }
+
+  if (productActionsModal) {
+    productActionsModal.querySelectorAll(
+      "button"
+    ).forEach(button => {
+      button.disabled = value;
+    });
   }
 }
 
@@ -115,18 +163,25 @@ function mapProduct(row) {
     id: row.id,
     name: row.name,
     category: row.category,
+
     purchasePrice: Number(
       row.purchase_price || 0
     ),
+
     sellingPrice: Number(
       row.selling_price || 0
     ),
+
     quantity: Number(
       row.quantity || 0
     ),
+
     minimumStock: Number(
       row.minimum_stock || 0
-    )
+    ),
+
+    isArchived:
+      row.is_archived === true
   };
 }
 
@@ -136,27 +191,31 @@ function mapMovement(row) {
     productId: row.product_id,
     productName: row.product_name,
     type: row.type,
-    quantity: Number(row.quantity || 0),
+
+    quantity: Number(
+      row.quantity || 0
+    ),
+
     previousQuantity: Number(
       row.previous_quantity || 0
     ),
+
     newQuantity: Number(
       row.new_quantity || 0
     ),
+
     unitCost: Number(
       row.unit_cost || 0
     ),
-    note: row.note,
+
+    note: row.note || "",
     date: row.date
   };
 }
 
 // ========================================
-// SUPABASE DATA LOADING
+// LOAD PRODUCTS
 // ========================================
-
-// Keep a single in-flight inventory fetch.
-// This avoids overlapping refresh requests.
 
 async function loadProducts() {
   if (refreshPromise) {
@@ -168,22 +227,19 @@ async function loadProducts() {
       .from("inventory")
       .select(
         "id,name,category,purchase_price," +
-        "selling_price,quantity,minimum_stock"
+        "selling_price,quantity,minimum_stock," +
+        "is_archived"
       )
-      .order("name", {
-        ascending: true
-      });
+      .order(
+        "name",
+        { ascending: true }
+      );
 
     if (error) {
       throw error;
     }
 
-    const nextProducts = (
-      data || []
-    ).map(mapProduct);
-
-    // Update state only after success.
-    products = nextProducts;
+    products = (data || []).map(mapProduct);
 
     productById = new Map(
       products.map(product => [
@@ -214,13 +270,14 @@ async function loadProductHistory(productId) {
     .from("stock_history")
     .select(
       "id,product_id,product_name,type," +
-        "quantity,previous_quantity,new_quantity," +
-        "unit_cost,note,date"
+      "quantity,previous_quantity,new_quantity," +
+      "unit_cost,note,date"
     )
     .eq("product_id", productId)
-    .order("date", {
-      ascending: false
-    });
+    .order(
+      "date",
+      { ascending: false }
+    );
 
   if (error) {
     throw error;
@@ -230,14 +287,21 @@ async function loadProductHistory(productId) {
 }
 
 // ========================================
-// STOCK STATUS
+// PRODUCT STATUS
 // ========================================
 
 function getStatus(product) {
+  if (product.isArchived) {
+    return {
+      label: "Archived",
+      className: "inventory-archived-tag"
+    };
+  }
+
   if (product.quantity === 0) {
     return {
       label: "Out of Stock",
-      className: "middleman"
+      className: "tag middleman"
     };
   }
 
@@ -247,28 +311,33 @@ function getStatus(product) {
   ) {
     return {
       label: "Low Stock",
-      className: "middleman"
+      className: "tag middleman"
     };
   }
 
   return {
     label: "In Stock",
-    className: "stock"
+    className: "tag stock"
   };
 }
 
 // ========================================
-// INVENTORY SUMMARY
+// SUMMARY CARDS
 // ========================================
 
-// Calculate all summary values in one pass.
-
 function updateSummary() {
+  let totalProducts = 0;
   let totalUnits = 0;
   let inventoryValue = 0;
   let lowStockCount = 0;
 
   for (const product of products) {
+    if (product.isArchived) {
+      continue;
+    }
+
+    totalProducts++;
+
     totalUnits += product.quantity;
 
     inventoryValue +=
@@ -284,11 +353,10 @@ function updateSummary() {
   }
 
   const summary = {
-    totalProducts: products.length,
+    totalProducts,
     totalUnits,
-    inventoryValue: formatMoney(
-      inventoryValue
-    ),
+    inventoryValue:
+      formatMoney(inventoryValue),
     lowStockCount
   };
 
@@ -308,27 +376,57 @@ function updateSummary() {
 // INVENTORY TABLE
 // ========================================
 
-// Buttons use data attributes instead of
-// creating three listeners per product.
-
-function makeActionButton(
-  label,
-  className,
-  action,
-  productId
-) {
+function makeActionsButton(product) {
   const button =
     document.createElement("button");
 
   button.type = "button";
-
   button.className =
-    `inventory-action-btn ${className}`;
+    "inventory-action-trigger";
 
-  button.textContent = label;
-  button.dataset.action = action;
-  button.dataset.productId = productId;
+  button.dataset.action = "actions";
+  button.dataset.productId = product.id;
+
   button.disabled = busy;
+
+  button.setAttribute(
+    "aria-label",
+    `Open actions for ${product.name}`
+  );
+
+  const icon = document.createElement("i");
+  icon.setAttribute(
+    "data-lucide",
+    "settings-2"
+  );
+  icon.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+
+  const label =
+    document.createElement("span");
+
+  label.textContent = "Actions";
+
+  const arrow =
+    document.createElement("i");
+
+  arrow.setAttribute(
+    "data-lucide",
+    "chevron-right"
+  );
+
+  arrow.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+
+  button.append(
+    icon,
+    label,
+    arrow
+  );
 
   return button;
 }
@@ -346,29 +444,54 @@ function renderProducts() {
   let matches = 0;
 
   for (const product of products) {
+    // Filter archived / active products.
+    if (
+      selectedInventoryFilter === "active" &&
+      product.isArchived
+    ) {
+      continue;
+    }
+
+    if (
+      selectedInventoryFilter === "archived" &&
+      !product.isArchived
+    ) {
+      continue;
+    }
+
+    // Search product name and category.
     if (
       term &&
-      !product.name.toLowerCase().includes(
-        term
-      )
+      !product.name
+        .toLowerCase()
+        .includes(term) &&
+      !String(product.category || "")
+        .toLowerCase()
+        .includes(term)
     ) {
       continue;
     }
 
     matches++;
 
-    const status = getStatus(product);
-
     const row =
       document.createElement("tr");
 
-    [
+    if (product.isArchived) {
+      row.classList.add(
+        "inventory-archived-row"
+      );
+    }
+
+    const values = [
       product.name,
       product.category,
       formatMoney(product.purchasePrice),
       formatMoney(product.sellingPrice),
       product.quantity
-    ].forEach(value => {
+    ];
+
+    values.forEach(value => {
       const cell =
         document.createElement("td");
 
@@ -377,50 +500,34 @@ function renderProducts() {
       row.appendChild(cell);
     });
 
-    // Stock status
+    // Status column.
+    const status = getStatus(product);
+
     const statusCell =
       document.createElement("td");
 
     const badge =
       document.createElement("span");
 
-    badge.className =
-      `tag ${status.className}`;
-
+    badge.className = status.className;
     badge.textContent = status.label;
 
     statusCell.appendChild(badge);
     row.appendChild(statusCell);
 
-    // Action buttons
+    // Single Actions button.
     const actionsCell =
       document.createElement("td");
 
     actionsCell.className =
       "inventory-actions";
 
-    actionsCell.append(
-      makeActionButton(
-        "Edit",
-        "edit-btn",
-        "edit",
-        product.id
-      ),
-      makeActionButton(
-        "Restock",
-        "restock-btn",
-        "restock",
-        product.id
-      ),
-      makeActionButton(
-        "History",
-        "history-btn",
-        "history",
-        product.id
-      )
+    actionsCell.appendChild(
+      makeActionsButton(product)
     );
 
     row.appendChild(actionsCell);
+
     fragment.appendChild(row);
   }
 
@@ -432,7 +539,22 @@ function renderProducts() {
       document.createElement("td");
 
     cell.colSpan = 7;
-    cell.textContent = "No products found.";
+
+    if (
+      selectedInventoryFilter === "archived"
+    ) {
+      cell.textContent =
+        "No archived products found.";
+    } else if (
+      selectedInventoryFilter === "active"
+    ) {
+      cell.textContent =
+        "No active products found.";
+    } else {
+      cell.textContent =
+        "No products found.";
+    }
+
     cell.style.textAlign = "center";
     cell.style.padding = "24px";
 
@@ -440,17 +562,14 @@ function renderProducts() {
     fragment.appendChild(row);
   }
 
-  // One table update instead of
-  // inserting each row individually.
   table.replaceChildren(fragment);
 
-  // Summary always covers ALL products,
-  // not just filtered search results.
   updateSummary();
+  refreshIcons();
 }
 
 // ========================================
-// DELEGATED TABLE ACTIONS
+// INVENTORY TABLE CLICK HANDLER
 // ========================================
 
 if (table) {
@@ -473,18 +592,10 @@ if (table) {
       const productId =
         button.dataset.productId;
 
-      switch (button.dataset.action) {
-        case "edit":
-          openEditProduct(productId);
-          break;
-
-        case "restock":
-          openRestockProduct(productId);
-          break;
-
-        case "history":
-          showProductHistory(productId);
-          break;
+      if (
+        button.dataset.action === "actions"
+      ) {
+        openProductActions(productId);
       }
     }
   );
@@ -509,19 +620,19 @@ async function addProduct(event) {
 
   const purchasePriceInput = document
     .getElementById("purchasePrice")
-    .value;
+    .value.trim();
 
   const sellingPriceInput = document
     .getElementById("sellingPrice")
-    .value;
+    .value.trim();
 
   const quantityInput = document
     .getElementById("quantity")
-    .value;
+    .value.trim();
 
   const minimumStockInput = document
     .getElementById("minimumStock")
-    .value;
+    .value.trim();
 
   const purchasePrice =
     Number(purchasePriceInput);
@@ -538,10 +649,10 @@ async function addProduct(event) {
   if (
     !name ||
     !category ||
-    purchasePriceInput.trim() === "" ||
-    sellingPriceInput.trim() === "" ||
-    quantityInput.trim() === "" ||
-    minimumStockInput.trim() === "" ||
+    !purchasePriceInput ||
+    !sellingPriceInput ||
+    !quantityInput ||
+    !minimumStockInput ||
     !Number.isFinite(purchasePrice) ||
     purchasePrice < 0 ||
     !Number.isFinite(sellingPrice) ||
@@ -555,26 +666,21 @@ async function addProduct(event) {
       "Please enter valid product details.",
       "error"
     );
-
     return;
   }
-
-  const normalizedName =
-    name.toLowerCase();
 
   const duplicate = products.some(
     product =>
       product.name.trim().toLowerCase() ===
-      normalizedName
+      name.toLowerCase()
   );
 
   if (duplicate) {
     showMessage(
       "This product already exists.\n" +
-      "Use Restock instead.",
+      "Use Restock or Restore instead.",
       "error"
     );
-
     return;
   }
 
@@ -583,7 +689,6 @@ async function addProduct(event) {
   let committed = false;
 
   try {
-    // Keep the existing atomic RPC.
     const { error } = await db.rpc(
       "timidy_add_product",
       {
@@ -598,7 +703,9 @@ async function addProduct(event) {
       }
     );
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     committed = true;
 
@@ -615,83 +722,10 @@ async function addProduct(event) {
       "success"
     );
   } catch (error) {
-    if (committed) {
-      showError(
-        "Product was added, but inventory " +
-        "refresh failed. Reload the page " +
-        "before trying again.",
-        error
-      );
-    } else {
-      showError(
-        "Unable to confirm product addition. " +
-        "Check inventory before retrying.",
-        error
-      );
-    }
-  } finally {
-    setBusy(false);
-  }
-}
-
-// ========================================
-// DELETE PRODUCT
-// ========================================
-
-// Called only when ALL four editable
-// fields are blank during Edit.
-//
-// The database RPC must:
-// - Verify administrator authorization.
-// - Block deletion when sales exist.
-// - Handle stock_history safely.
-// - Delete the product atomically.
-
-async function deleteProduct(productId) {
-  if (busy) return;
-
-  const product =
-    productById.get(productId);
-
-  if (!product) return;
-
-  const confirmed = confirm(
-    `Delete "${product.name}" permanently?\n\n` +
-    "This action cannot be undone.\n\n" +
-    "Products linked to sales must not " +
-    "be deleted."
-  );
-
-  if (!confirmed) return;
-
-  setBusy(true);
-
-  let committed = false;
-
-  try {
-    const { error } = await db.rpc(
-      "timidy_delete_product",
-      {
-        p_product_id: productId
-      }
-    );
-
-    if (error) throw error;
-
-    committed = true;
-
-    await loadProducts();
-
-    showMessage(
-      `"${product.name}" deleted successfully!`,
-      "success"
-    );
-  } catch (error) {
     showError(
       committed
-        ? "Product was deleted, but inventory " +
-          "refresh failed. Reload the page."
-        : "Unable to delete product.",
+        ? "Product added, but refresh failed. Reload the page."
+        : "Unable to confirm product addition. Check inventory before retrying.",
       error
     );
   } finally {
@@ -701,6 +735,11 @@ async function deleteProduct(productId) {
 
 // ========================================
 // EDIT PRODUCT
+// ========================================
+//
+// Editing never deletes a product.
+// All four fields must remain valid.
+//
 // ========================================
 
 async function openEditProduct(productId) {
@@ -742,19 +781,6 @@ async function openEditProduct(productId) {
   const name = nameInput.trim();
   const category = categoryInput.trim();
 
-  // Detect deletion BEFORE converting
-  // empty numeric strings to Number(0).
-  const allFieldsEmpty =
-    name === "" &&
-    category === "" &&
-    priceInput.trim() === "" &&
-    minimumInput.trim() === "";
-
-  if (allFieldsEmpty) {
-    await deleteProduct(productId);
-    return;
-  }
-
   const sellingPrice =
     Number(priceInput);
 
@@ -775,18 +801,14 @@ async function openEditProduct(productId) {
       "Please enter valid product details.",
       "error"
     );
-
     return;
   }
-
-  const normalizedName =
-    name.toLowerCase();
 
   const duplicate = products.some(
     item =>
       item.id !== product.id &&
       item.name.trim().toLowerCase() ===
-        normalizedName
+        name.toLowerCase()
   );
 
   if (duplicate) {
@@ -794,7 +816,6 @@ async function openEditProduct(productId) {
       "Another product already uses that name.",
       "error"
     );
-
     return;
   }
 
@@ -803,7 +824,6 @@ async function openEditProduct(productId) {
   let committed = false;
 
   try {
-    // Keep the existing permitted update.
     const { data, error } = await db
       .from("inventory")
       .update({
@@ -815,7 +835,9 @@ async function openEditProduct(productId) {
       .eq("id", productId)
       .select("id");
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     if (
       !data ||
@@ -837,8 +859,7 @@ async function openEditProduct(productId) {
   } catch (error) {
     showError(
       committed
-        ? "Product updated, but refresh failed. " +
-          "Reload the page."
+        ? "Product updated, but refresh failed. Reload the page."
         : "Unable to confirm product changes.",
       error
     );
@@ -858,6 +879,14 @@ async function openRestockProduct(productId) {
     productById.get(productId);
 
   if (!product) return;
+
+  if (product.isArchived) {
+    showMessage(
+      "Restore this product before restocking.",
+      "error"
+    );
+    return;
+  }
 
   const quantityInput = prompt(
     `How many units of "${product.name}" are you adding?`
@@ -890,17 +919,14 @@ async function openRestockProduct(productId) {
       "Enter a valid quantity and purchase cost.",
       "error"
     );
-
     return;
   }
 
   setBusy(true);
 
   let committed = false;
-  let result = null;
 
   try {
-    // Keep the existing atomic RPC.
     const { data, error } = await db.rpc(
       "timidy_restock_product",
       {
@@ -911,7 +937,9 @@ async function openRestockProduct(productId) {
       }
     );
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     if (
       !Array.isArray(data) ||
@@ -922,28 +950,701 @@ async function openRestockProduct(productId) {
       );
     }
 
-    result = data[0];
     committed = true;
 
     await loadProducts();
 
     showMessage(
       `Added ${addedQuantity} units successfully!\n` +
-      `New stock: ${result.new_quantity} units\n` +
-      `Average cost: ${formatMoney(result.average_cost)}`,
+      `New stock: ${data[0].new_quantity} units\n` +
+      `Average cost: ${formatMoney(data[0].average_cost)}`,
       "success"
     );
   } catch (error) {
     showError(
       committed
-        ? "Restock saved, but refresh failed. " +
-          "Reload the page before restocking again."
-        : "Unable to confirm restock. " +
-          "Check inventory before retrying.",
+        ? "Restock saved, but refresh failed. Reload before trying again."
+        : "Unable to confirm restock. Check inventory before retrying.",
       error
     );
   } finally {
     setBusy(false);
+  }
+}
+
+// ========================================
+// ADJUST STOCK
+// ========================================
+
+async function adjustStock(productId) {
+  if (busy) return;
+
+  const product =
+    productById.get(productId);
+
+  if (!product) return;
+
+  if (product.isArchived) {
+    showMessage(
+      "Restore this product before adjusting stock.",
+      "error"
+    );
+    return;
+  }
+
+  const quantityInput = prompt(
+    `Correct physical quantity for "${product.name}":\n\n` +
+    `Current recorded stock: ${product.quantity}\n` +
+    "Enter the actual quantity now:",
+    String(product.quantity)
+  );
+
+  if (quantityInput === null) return;
+
+  const newQuantity =
+    Number(quantityInput);
+
+  if (
+    quantityInput.trim() === "" ||
+    !Number.isInteger(newQuantity) ||
+    newQuantity < 0 ||
+    newQuantity > 2147483647
+  ) {
+    showMessage(
+      "Enter a valid whole-number stock quantity.",
+      "error"
+    );
+    return;
+  }
+
+  if (
+    newQuantity === product.quantity
+  ) {
+    showMessage(
+      "Stock quantity has not changed.",
+      "error"
+    );
+    return;
+  }
+
+  const reasonInput = prompt(
+    "Reason for stock adjustment:\n" +
+    "e.g. Damaged, missing, counting error, correction"
+  );
+
+  if (reasonInput === null) return;
+
+  const reason =
+    reasonInput.trim();
+
+  if (
+    !reason ||
+    reason.length > 1000
+  ) {
+    showMessage(
+      "A reason of 1–1000 characters is required.",
+      "error"
+    );
+    return;
+  }
+
+  const difference =
+    newQuantity - product.quantity;
+
+  const confirmed = confirm(
+    `Adjust stock for "${product.name}"?\n\n` +
+    `Current: ${product.quantity}\n` +
+    `Corrected: ${newQuantity}\n` +
+    `Change: ${difference > 0 ? "+" : ""}${difference}\n\n` +
+    `Reason: ${reason}\n\n` +
+    "This change will be recorded in stock history."
+  );
+
+  if (!confirmed) return;
+
+  setBusy(true);
+
+  let committed = false;
+
+  try {
+    const { error } = await db.rpc(
+      "timidy_adjust_stock",
+      {
+        p_product_id: productId,
+        p_new_quantity: newQuantity,
+        p_reason: reason,
+        p_history_id: createId()
+      }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    committed = true;
+
+    await loadProducts();
+
+    showMessage(
+      `Stock adjusted successfully!\n` +
+      `New quantity: ${newQuantity}\n` +
+      `Reason: ${reason}`,
+      "success"
+    );
+  } catch (error) {
+    showError(
+      committed
+        ? "Adjustment saved, but refresh failed. Reload the page."
+        : "Unable to confirm stock adjustment. Check history before retrying.",
+      error
+    );
+  } finally {
+    setBusy(false);
+  }
+}
+
+// ========================================
+// ARCHIVE / RESTORE
+// ========================================
+
+async function setProductArchived(
+  productId,
+  shouldArchive
+) {
+  if (busy) return;
+
+  const product =
+    productById.get(productId);
+
+  if (!product) return;
+
+  const action =
+    shouldArchive ? "Archive" : "Restore";
+
+  const confirmed = confirm(
+    `${action} "${product.name}"?\n\n` +
+    (
+      shouldArchive
+        ? "The product will disappear from active inventory and cannot be sold or restocked until restored.\n\nIts sales and stock history will be preserved."
+        : "The product will return to active inventory and become available for stock operations."
+    )
+  );
+
+  if (!confirmed) return;
+
+  setBusy(true);
+
+  let committed = false;
+
+  try {
+    const { error } = await db.rpc(
+      "timidy_set_product_archived",
+      {
+        p_product_id: productId,
+        p_is_archived: shouldArchive
+      }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    committed = true;
+
+    await loadProducts();
+
+    showMessage(
+      shouldArchive
+        ? `"${product.name}" archived successfully!`
+        : `"${product.name}" restored successfully!`,
+      "success"
+    );
+  } catch (error) {
+    showError(
+      committed
+        ? `${action} succeeded, but refresh failed. Reload the page.`
+        : `Unable to ${action.toLowerCase()} product.`,
+      error
+    );
+  } finally {
+    setBusy(false);
+  }
+}
+
+// ========================================
+// PERMANENT DELETE
+// ========================================
+
+async function deleteProduct(productId) {
+  if (busy) return;
+
+  const product =
+    productById.get(productId);
+
+  if (!product) return;
+
+  const confirmed = confirm(
+    `PERMANENTLY DELETE "${product.name}"?\n\n` +
+    "This cannot be undone.\n\n" +
+    "The product and its non-sale stock history " +
+    "will be removed.\n\n" +
+    "Products linked to sales cannot be deleted. " +
+    "Use Archive for those products.\n\n" +
+    "Continue?"
+  );
+
+  if (!confirmed) return;
+
+  const typedName = prompt(
+    "To confirm permanent deletion, type the product name exactly:",
+    ""
+  );
+
+  if (typedName === null) return;
+
+  if (
+    typedName.trim() !== product.name
+  ) {
+    showMessage(
+      "Deletion cancelled: product name did not match.",
+      "error"
+    );
+    return;
+  }
+
+  setBusy(true);
+
+  let committed = false;
+
+  try {
+    const { error } = await db.rpc(
+      "timidy_delete_product",
+      {
+        p_product_id: productId
+      }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    committed = true;
+
+    await loadProducts();
+
+    showMessage(
+      `"${product.name}" deleted permanently.`,
+      "success"
+    );
+  } catch (error) {
+    showError(
+      committed
+        ? "Product deleted, but refresh failed. Reload the page."
+        : "Unable to delete product. If it has sales history, archive it instead.",
+      error
+    );
+  } finally {
+    setBusy(false);
+  }
+}
+
+// ========================================
+// PRODUCT ACTIONS MODAL
+// ========================================
+
+function createProductActionsModal() {
+  if (productActionsModal) {
+    return productActionsModal;
+  }
+
+  const overlay =
+    document.createElement("div");
+
+  overlay.className =
+    "product-actions-overlay";
+
+  overlay.hidden = true;
+
+  overlay.innerHTML = `
+    <div
+      class="product-actions-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="productActionsTitle"
+      tabindex="-1"
+    >
+      <div class="product-actions-header">
+        <div>
+          <h2 id="productActionsTitle">
+            Product Actions
+          </h2>
+
+          <p id="productActionsName"></p>
+        </div>
+
+        <button
+          type="button"
+          class="product-actions-close"
+          aria-label="Close product actions"
+        >&times;</button>
+      </div>
+
+      <div
+        id="productActionsGrid"
+        class="product-actions-grid"
+      ></div>
+
+      <p
+        id="productActionsHint"
+        class="product-actions-hint"
+      ></p>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Close button.
+  overlay.querySelector(
+    ".product-actions-close"
+  ).addEventListener(
+    "click",
+    closeProductActions
+  );
+
+  // Clicking outside dialog closes it.
+  overlay.addEventListener(
+    "click",
+    event => {
+      if (
+        event.target === overlay &&
+        !busy
+      ) {
+        closeProductActions();
+      }
+    }
+  );
+
+  // Action selection.
+  overlay.querySelector(
+    "#productActionsGrid"
+  ).addEventListener(
+    "click",
+    event => {
+      const button = event.target.closest(
+        "button[data-product-action]"
+      );
+
+      if (
+        !button ||
+        !activeActionsProductId ||
+        busy
+      ) {
+        return;
+      }
+
+      const productId =
+        activeActionsProductId;
+
+      const action =
+        button.dataset.productAction;
+
+      closeProductActions();
+
+      switch (action) {
+        case "edit":
+          openEditProduct(productId);
+          break;
+
+        case "restock":
+          openRestockProduct(productId);
+          break;
+
+        case "adjust":
+          adjustStock(productId);
+          break;
+
+        case "history":
+          showProductHistory(productId);
+          break;
+
+        case "archive":
+          setProductArchived(
+            productId,
+            true
+          );
+          break;
+
+        case "restore":
+          setProductArchived(
+            productId,
+            false
+          );
+          break;
+
+        case "delete":
+          deleteProduct(productId);
+          break;
+      }
+    }
+  );
+
+  // Keep keyboard focus in dialog.
+  overlay.addEventListener(
+    "keydown",
+    event => {
+      if (
+        event.key !== "Tab" ||
+        overlay.hidden
+      ) {
+        return;
+      }
+
+      const focusable = Array.from(
+        overlay.querySelectorAll(
+          "button:not(:disabled)"
+        )
+      );
+
+      if (!focusable.length) return;
+
+      const first = focusable[0];
+      const last =
+        focusable[focusable.length - 1];
+
+      if (
+        event.shiftKey &&
+        document.activeElement === first
+      ) {
+        event.preventDefault();
+        last.focus();
+      } else if (
+        !event.shiftKey &&
+        document.activeElement === last
+      ) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  );
+
+  productActionsModal = overlay;
+
+  return overlay;
+}
+
+function makeProductActionCard({
+  action,
+  title,
+  description,
+  icon,
+  variant = ""
+}) {
+  const button =
+    document.createElement("button");
+
+  button.type = "button";
+
+  button.className =
+    `product-action-card ${variant}`.trim();
+
+  button.dataset.productAction = action;
+
+  const iconElement =
+    document.createElement("i");
+
+  iconElement.setAttribute(
+    "data-lucide",
+    icon
+  );
+
+  iconElement.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+
+  const content =
+    document.createElement("span");
+
+  const heading =
+    document.createElement("strong");
+
+  heading.textContent = title;
+
+  const detail =
+    document.createElement("small");
+
+  detail.textContent = description;
+
+  content.append(
+    heading,
+    detail
+  );
+
+  button.append(
+    iconElement,
+    content
+  );
+
+  return button;
+}
+
+function openProductActions(productId) {
+  if (busy) return;
+
+  const product =
+    productById.get(productId);
+
+  if (!product) {
+    showMessage(
+      "Product not found. Refresh inventory.",
+      "error"
+    );
+    return;
+  }
+
+  const modal =
+    createProductActionsModal();
+
+  activeActionsProductId = productId;
+  lastActionsTrigger =
+    document.activeElement;
+
+  modal.querySelector(
+    "#productActionsName"
+  ).textContent =
+    `${product.name} · ` +
+    `${product.quantity} units · ` +
+    (
+      product.isArchived
+        ? "Archived"
+        : "Active"
+    );
+
+  const grid =
+    modal.querySelector(
+      "#productActionsGrid"
+    );
+
+  const actions = [
+    {
+      action: "edit",
+      title: "Edit",
+      description:
+        "Update product details",
+      icon: "pencil"
+    }
+  ];
+
+  // Archived products cannot be
+  // restocked or adjusted.
+  if (!product.isArchived) {
+    actions.push(
+      {
+        action: "restock",
+        title: "Restock",
+        description:
+          "Add purchased stock",
+        icon: "package-plus"
+      },
+      {
+        action: "adjust",
+        title: "Adjust Stock",
+        description:
+          "Correct stock quantity",
+        icon: "sliders-horizontal"
+      }
+    );
+  }
+
+  actions.push({
+    action: "history",
+    title: "Stock History",
+    description:
+      "View all stock movements",
+    icon: "history"
+  });
+
+  if (product.isArchived) {
+    actions.push({
+      action: "restore",
+      title: "Restore",
+      description:
+        "Return to active stock",
+      icon: "archive-restore",
+      variant: "restore"
+    });
+  } else {
+    actions.push({
+      action: "archive",
+      title: "Archive",
+      description:
+        "Hide from active sales",
+      icon: "archive"
+    });
+  }
+
+  actions.push({
+    action: "delete",
+    title: "Delete",
+    description:
+      "Permanently remove unsold product",
+    icon: "trash-2",
+    variant: "danger"
+  });
+
+  const fragment =
+    document.createDocumentFragment();
+
+  actions.forEach(action => {
+    fragment.appendChild(
+      makeProductActionCard(action)
+    );
+  });
+
+  grid.replaceChildren(fragment);
+
+  modal.querySelector(
+    "#productActionsHint"
+  ).textContent =
+    product.isArchived
+      ? "Restore this product before restocking, adjusting, or selling it."
+      : "Archiving preserves history. Permanent deletion is restricted for products with sales.";
+
+  modal.hidden = false;
+
+  document.body.classList.add(
+    "product-actions-open"
+  );
+
+  refreshIcons();
+
+  modal.querySelector(
+    ".product-actions-close"
+  ).focus();
+}
+
+function closeProductActions() {
+  if (
+    !productActionsModal ||
+    productActionsModal.hidden
+  ) {
+    return;
+  }
+
+  productActionsModal.hidden = true;
+  activeActionsProductId = null;
+
+  document.body.classList.remove(
+    "product-actions-open"
+  );
+
+  if (
+    lastActionsTrigger &&
+    lastActionsTrigger.isConnected &&
+    typeof lastActionsTrigger.focus ===
+      "function"
+  ) {
+    lastActionsTrigger.focus();
   }
 }
 
@@ -977,6 +1678,7 @@ function createHistoryModal() {
           <h2 id="stockHistoryTitle">
             Stock History
           </h2>
+
           <p id="stockHistoryProduct"></p>
         </div>
 
@@ -992,12 +1694,13 @@ function createHistoryModal() {
           <thead>
             <tr>
               <th>Date</th>
-              <th>Activity</th>
+              <th>Activity / Reason</th>
               <th>Change</th>
               <th>Balance</th>
               <th>Unit Cost</th>
             </tr>
           </thead>
+
           <tbody id="stockHistoryRows"></tbody>
         </table>
       </div>
@@ -1035,6 +1738,7 @@ function showHistoryMessage(rows, text) {
 
   cell.colSpan = 5;
   cell.textContent = text;
+
   cell.className =
     "stock-history-empty";
 }
@@ -1057,9 +1761,10 @@ async function showProductHistory(productId) {
     "#stockHistoryProduct"
   ).textContent = product.name;
 
-  const rows = modal.querySelector(
-    "#stockHistoryRows"
-  );
+  const rows =
+    modal.querySelector(
+      "#stockHistoryRows"
+    );
 
   showHistoryMessage(
     rows,
@@ -1083,9 +1788,6 @@ async function showProductHistory(productId) {
     const movements =
       await loadProductHistory(productId);
 
-    // Ignore outdated requests if the
-    // modal was closed or another product
-    // was selected during loading.
     if (
       modal.hidden ||
       requestId !== historyRequestId
@@ -1098,7 +1800,6 @@ async function showProductHistory(productId) {
         rows,
         "No stock history recorded for this product."
       );
-
       return;
     }
 
@@ -1109,9 +1810,13 @@ async function showProductHistory(productId) {
       const row =
         document.createElement("tr");
 
-      const date = new Date(
-        movement.date
-      ).toLocaleString("en-TZ");
+      const timestamp =
+        new Date(movement.date);
+
+      const date =
+        Number.isNaN(timestamp.getTime())
+          ? String(movement.date || "")
+          : timestamp.toLocaleString("en-TZ");
 
       const quantity =
         movement.quantity;
@@ -1121,17 +1826,38 @@ async function showProductHistory(productId) {
           ? `+${quantity}`
           : String(quantity);
 
+      // Date.
       const dateCell =
         document.createElement("td");
 
       dateCell.textContent = date;
 
+      // Activity and reason.
       const typeCell =
         document.createElement("td");
 
-      typeCell.textContent =
+      const activity =
+        document.createElement("strong");
+
+      activity.textContent =
         movement.type || "";
 
+      typeCell.appendChild(activity);
+
+      if (movement.note) {
+        const note =
+          document.createElement("span");
+
+        note.className =
+          "stock-history-note";
+
+        note.textContent =
+          movement.note;
+
+        typeCell.appendChild(note);
+      }
+
+      // Quantity change.
       const changeCell =
         document.createElement("td");
 
@@ -1142,12 +1868,14 @@ async function showProductHistory(productId) {
           ? "stock-change-negative"
           : "stock-change-positive";
 
+      // New balance.
       const balanceCell =
         document.createElement("td");
 
       balanceCell.textContent =
         movement.newQuantity;
 
+      // Unit cost.
       const costCell =
         document.createElement("td");
 
@@ -1194,8 +1922,6 @@ function closeHistoryModal() {
     return;
   }
 
-  // Invalidate any outstanding history
-  // request for the closed modal.
   historyRequestId++;
 
   historyModal.hidden = true;
@@ -1206,6 +1932,7 @@ function closeHistoryModal() {
 
   if (
     lastHistoryTrigger &&
+    lastHistoryTrigger.isConnected &&
     typeof lastHistoryTrigger.focus ===
       "function"
   ) {
@@ -1213,21 +1940,39 @@ function closeHistoryModal() {
   }
 }
 
+// ========================================
+// ESCAPE KEY
+// ========================================
+
 document.addEventListener(
   "keydown",
   event => {
+    if (event.key !== "Escape") {
+      return;
+    }
+
     if (
-      event.key === "Escape" &&
+      productActionsModal &&
+      !productActionsModal.hidden &&
+      !busy
+    ) {
+      event.preventDefault();
+      closeProductActions();
+      return;
+    }
+
+    if (
       historyModal &&
       !historyModal.hidden
     ) {
+      event.preventDefault();
       closeHistoryModal();
     }
   }
 );
 
 // ========================================
-// SEARCH — DEBOUNCED
+// SEARCH
 // ========================================
 
 if (search) {
@@ -1245,7 +1990,67 @@ if (search) {
 }
 
 // ========================================
-// FORM EVENTS
+// ACTIVE / ARCHIVED / ALL FILTERS
+// ========================================
+
+if (filterTabs) {
+  filterTabs.addEventListener(
+    "click",
+    event => {
+      if (busy) return;
+
+      const button = event.target.closest(
+        "button[data-filter]"
+      );
+
+      if (
+        !button ||
+        !filterTabs.contains(button)
+      ) {
+        return;
+      }
+
+      const nextFilter =
+        button.dataset.filter;
+
+      if (
+        ![
+          "active",
+          "archived",
+          "all"
+        ].includes(nextFilter)
+      ) {
+        return;
+      }
+
+      selectedInventoryFilter =
+        nextFilter;
+
+      filterTabs.querySelectorAll(
+        "button[data-filter]"
+      ).forEach(tab => {
+        const active =
+          tab.dataset.filter ===
+          selectedInventoryFilter;
+
+        tab.classList.toggle(
+          "active",
+          active
+        );
+
+        tab.setAttribute(
+          "aria-pressed",
+          String(active)
+        );
+      });
+
+      renderProducts();
+    }
+  );
+}
+
+// ========================================
+// ADD PRODUCT FORM
 // ========================================
 
 if (form) {
@@ -1264,13 +2069,13 @@ async function initializeInventory() {
 
   try {
     const user =
-      await window.TimidyAuth.getAuthorizedUser();
+      await window.TimidyAuth
+        .getAuthorizedUser();
 
     if (!user) {
       window.location.replace(
         "login.html"
       );
-
       return;
     }
 
@@ -1288,12 +2093,8 @@ async function initializeInventory() {
 initializeInventory();
 
 // ========================================
-// REFRESH WHEN RETURNING TO TAB
+// BACKGROUND REFRESH
 // ========================================
-
-// Don't reload on every quick tab switch.
-// Refresh when the data is over 60 seconds
-// old, keeping inventory reasonably fresh.
 
 document.addEventListener(
   "visibilitychange",
@@ -1319,13 +2120,13 @@ document.addEventListener(
 
     try {
       const user =
-        await window.TimidyAuth.getAuthorizedUser();
+        await window.TimidyAuth
+          .getAuthorizedUser();
 
       if (!user) {
         window.location.replace(
           "login.html"
         );
-
         return;
       }
 
@@ -1342,10 +2143,7 @@ document.addEventListener(
 );
 
 // ========================================
-// ICONS
+// INITIAL ICONS
 // ========================================
 
-if (typeof lucide !== "undefined") {
-  lucide.createIcons();
-}
-
+refreshIcons();

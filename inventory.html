@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -15,23 +14,467 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="js/supabase-config.js"></script>
   <script src="js/auth.js"></script>
-
   <script>
     TimidyAuth.requireAdmin();
   </script>
-
   <script src="js/theme-init.js"></script>
+
   <link rel="stylesheet" href="css/style.css">
 
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
   <script src="js/inventory.js" defer></script>
   <script src="js/mobile-menu.js"></script>
   <script src="js/admin-profile.js" defer></script>
+
+  <style>
+    /* =========================================
+       INVENTORY TOOLBAR
+       ========================================= */
+
+    .inventory-panel-header {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 18px;
+    }
+
+    .inventory-toolbar {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .inventory-filter-tabs {
+      display: inline-flex;
+      align-items: center;
+      flex: 0 0 auto;
+      gap: 4px;
+      padding: 5px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 12px;
+      background: rgba(100, 116, 139, 0.12);
+    }
+
+    .inventory-filter-tab {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 9px 16px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.3;
+      white-space: nowrap;
+      cursor: pointer;
+      transition:
+        background-color 0.18s ease,
+        color 0.18s ease,
+        box-shadow 0.18s ease;
+    }
+
+    .inventory-filter-tab:hover:not(.active) {
+      background: rgba(148, 163, 184, 0.18);
+    }
+
+    .inventory-filter-tab.active {
+      background: #2563eb;
+      color: #ffffff;
+      box-shadow: 0 3px 12px rgba(37, 99, 235, 0.24);
+    }
+
+    .inventory-search-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 0 1 340px;
+      width: 100%;
+      max-width: 340px;
+      min-width: 190px;
+      min-height: 46px;
+      padding: 0 14px;
+      border: 1px solid rgba(148, 163, 184, 0.32);
+      border-radius: 10px;
+      background: rgba(100, 116, 139, 0.08);
+      color: inherit;
+    }
+
+    .inventory-search-wrap > svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      opacity: 0.65;
+    }
+
+    .inventory-search-wrap input {
+      appearance: none;
+      flex: 1;
+      width: 100%;
+      min-width: 0;
+      min-height: 42px;
+      padding: 0;
+      border: 0;
+      outline: none;
+      box-shadow: none;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 14px;
+    }
+
+    .inventory-search-wrap input:focus {
+      outline: none;
+      border: 0;
+      box-shadow: none;
+    }
+
+    .inventory-search-wrap input::placeholder {
+      color: #94a3b8;
+      opacity: 1;
+    }
+
+    .inventory-filter-note {
+      margin: 0 0 14px;
+      color: inherit;
+      font-size: 12px;
+      opacity: 0.7;
+      line-height: 1.5;
+    }
+
+    .inventory-filter-tab:focus-visible,
+    .inventory-search-wrap:focus-within,
+    .inventory-action-trigger:focus-visible,
+    .product-action-card:focus-visible,
+    .product-actions-close:focus-visible {
+      outline: 3px solid #60a5fa;
+      outline-offset: 2px;
+    }
+
+    /* =========================================
+       TABLE ACTION BUTTON
+       ========================================= */
+
+    td.inventory-actions {
+      white-space: nowrap;
+      min-width: 112px;
+    }
+
+    .inventory-action-trigger {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 39px;
+      padding: 9px 13px;
+      border: 1px solid rgba(96, 165, 250, 0.5);
+      border-radius: 9px;
+      background: rgba(37, 99, 235, 0.12);
+      color: inherit;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition:
+        background-color 0.18s ease,
+        border-color 0.18s ease;
+    }
+
+    .inventory-action-trigger:hover:not(:disabled) {
+      background: rgba(37, 99, 235, 0.23);
+      border-color: #60a5fa;
+    }
+
+    .inventory-action-trigger:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .inventory-action-trigger svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    .inventory-archived-row {
+      opacity: 0.82;
+    }
+
+    .inventory-archived-tag {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: #64748b;
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* =========================================
+       PRODUCT ACTIONS POPUP
+       ========================================= */
+
+    .product-actions-overlay[hidden] {
+      display: none !important;
+    }
+
+    .product-actions-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(3, 10, 24, 0.76);
+      backdrop-filter: blur(5px);
+    }
+
+    .product-actions-dialog {
+      width: 100%;
+      max-width: 490px;
+      max-height: min(90vh, 720px);
+      overflow-y: auto;
+      padding: 24px;
+      border: 1px solid rgba(148, 163, 184, 0.27);
+      border-radius: 18px;
+      background: #1a263b;
+      color: #f8fafc;
+      box-shadow: 0 25px 80px rgba(0, 0, 0, 0.42);
+    }
+
+    .product-actions-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 17px;
+      margin-bottom: 18px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .product-actions-header h2 {
+      margin: 0 0 7px;
+      color: #ffffff;
+      font-size: 21px;
+      line-height: 1.25;
+    }
+
+    .product-actions-header p {
+      margin: 0;
+      color: #aab8cd;
+      font-size: 13px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .product-actions-close {
+      appearance: none;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      border-radius: 9px;
+      background: rgba(148, 163, 184, 0.12);
+      color: #ffffff;
+      font: inherit;
+      font-size: 25px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .product-actions-close:hover {
+      background: rgba(148, 163, 184, 0.23);
+    }
+
+    .product-actions-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 11px;
+    }
+
+    .product-action-card {
+      appearance: none;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 12px;
+      min-height: 109px;
+      padding: 15px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 12px;
+      background: rgba(148, 163, 184, 0.08);
+      color: #f8fafc;
+      text-align: left;
+      font: inherit;
+      cursor: pointer;
+      transition:
+        border-color 0.18s ease,
+        background-color 0.18s ease,
+        transform 0.18s ease;
+    }
+
+    .product-action-card:hover:not(:disabled) {
+      transform: translateY(-2px);
+      border-color: #60a5fa;
+      background: rgba(37, 99, 235, 0.18);
+    }
+
+    .product-action-card:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .product-action-card > svg {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+      color: #93c5fd;
+    }
+
+    .product-action-card strong {
+      display: block;
+      color: #f8fafc;
+      font-size: 14px;
+      font-weight: 650;
+      line-height: 1.4;
+    }
+
+    .product-action-card small {
+      display: block;
+      margin-top: 4px;
+      color: #aab8cd;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .product-action-card.restore > svg {
+      color: #86efac;
+    }
+
+    .product-action-card.danger {
+      border-color: rgba(248, 113, 113, 0.4);
+    }
+
+    .product-action-card.danger > svg,
+    .product-action-card.danger strong {
+      color: #fca5a5;
+    }
+
+    .product-action-card.danger:hover {
+      border-color: #f87171;
+      background: rgba(220, 38, 38, 0.17);
+    }
+
+    .product-actions-hint {
+      margin: 17px 0 0;
+      color: #aab8cd;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    body.product-actions-open {
+      overflow: hidden;
+    }
+
+    /* =========================================
+       STOCK HISTORY NOTE
+       ========================================= */
+
+    .stock-history-note {
+      display: block;
+      margin-top: 5px;
+      font-size: 12px;
+      line-height: 1.5;
+      opacity: 0.8;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    /* =========================================
+       RESPONSIVE
+       ========================================= */
+
+    @media (max-width: 900px) {
+      .inventory-toolbar {
+        gap: 12px;
+      }
+
+      .inventory-filter-tab {
+        padding: 9px 11px;
+      }
+
+      .inventory-search-wrap {
+        max-width: 280px;
+      }
+    }
+
+    @media (max-width: 700px) {
+      .inventory-toolbar {
+        flex-wrap: wrap;
+        align-items: stretch;
+      }
+
+      .inventory-filter-tabs {
+        flex: 1 1 100%;
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .inventory-filter-tab {
+        flex: 1 1 0;
+        padding: 10px 7px;
+        font-size: 12px;
+      }
+
+      .inventory-search-wrap {
+        flex: 1 1 100%;
+        width: 100%;
+        max-width: none;
+        min-width: 0;
+      }
+
+      .product-actions-dialog {
+        padding: 19px;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .product-actions-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .product-action-card {
+        min-height: 88px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .inventory-filter-tab,
+      .inventory-action-trigger,
+      .product-action-card {
+        transition: none;
+      }
+    }
+  </style>
 </head>
 
 <body>
   <div class="app">
-
     <aside class="sidebar">
       <div class="brand">
         <a
@@ -115,7 +558,6 @@
 
     <div class="main-area">
       <header class="topbar">
-
         <button
           id="mobileMenuToggle"
           class="mobile-menu-toggle"
@@ -175,20 +617,23 @@
       </header>
 
       <main class="content">
+        <!-- =====================================
+             INVENTORY SUMMARY
+             ===================================== -->
 
         <section class="stats-grid">
           <article class="stat-card">
-            <p>Total Products</p>
+            <p>Active Products</p>
             <h2 id="totalProducts">0</h2>
           </article>
 
           <article class="stat-card">
-            <p>Total Units</p>
+            <p>Active Stock Units</p>
             <h2 id="totalUnits">0</h2>
           </article>
 
           <article class="stat-card">
-            <p>Inventory Value</p>
+            <p>Active Inventory Value</p>
             <h2 id="inventoryValue">TZS 0</h2>
           </article>
 
@@ -197,6 +642,10 @@
             <h2 id="lowStockCount">0</h2>
           </article>
         </section>
+
+        <!-- =====================================
+             ADD PRODUCT
+             ===================================== -->
 
         <section class="dashboard-panel">
           <div class="panel-header">
@@ -234,9 +683,17 @@
                 id="category"
                 autocomplete="off"
               >
-                <option value="Computer">Computer</option>
-                <option value="Mobile">Mobile</option>
-                <option value="Accessory">Accessory</option>
+                <option value="Computer">
+                  Computer
+                </option>
+
+                <option value="Mobile">
+                  Mobile
+                </option>
+
+                <option value="Accessory">
+                  Accessory
+                </option>
               </select>
             </div>
 
@@ -319,22 +776,77 @@
           </form>
         </section>
 
+        <!-- =====================================
+             INVENTORY PRODUCTS
+             ===================================== -->
+
         <section class="dashboard-panel">
-          <div class="panel-header">
+          <div class="panel-header inventory-panel-header">
             <div>
-              <h2>Available Stock</h2>
-              <p>Products currently registered</p>
+              <h2>Inventory Products</h2>
+              <p>
+                Manage stock, product history,
+                adjustments and archived items
+              </p>
             </div>
 
-            <input
-              id="searchProduct"
-              class="search-input"
-              type="search"
-              autocomplete="off"
-              placeholder="Search products..."
-              aria-label="Search products"
-            >
+            <div class="inventory-toolbar">
+              <div
+                id="inventoryFilterTabs"
+                class="inventory-filter-tabs"
+                role="group"
+                aria-label="Filter inventory products"
+              >
+                <button
+                  type="button"
+                  class="inventory-filter-tab active"
+                  data-filter="active"
+                  aria-pressed="true"
+                >
+                  Active
+                </button>
+
+                <button
+                  type="button"
+                  class="inventory-filter-tab"
+                  data-filter="archived"
+                  aria-pressed="false"
+                >
+                  Archived
+                </button>
+
+                <button
+                  type="button"
+                  class="inventory-filter-tab"
+                  data-filter="all"
+                  aria-pressed="false"
+                >
+                  All Products
+                </button>
+              </div>
+
+              <div class="inventory-search-wrap">
+                <i
+                  data-lucide="search"
+                  aria-hidden="true"
+                ></i>
+
+                <input
+                  id="searchProduct"
+                  type="search"
+                  autocomplete="off"
+                  placeholder="Search products..."
+                  aria-label="Search inventory products"
+                >
+              </div>
+            </div>
           </div>
+
+          <p class="inventory-filter-note">
+            Summary cards show active inventory only.
+            Archived products remain accessible through
+            the Archived and All Products filters.
+          </p>
 
           <div class="table-wrapper">
             <table>
@@ -354,7 +866,6 @@
             </table>
           </div>
         </section>
-
       </main>
     </div>
   </div>
@@ -372,6 +883,10 @@
     </p>
   </footer>
 
+  <!-- =====================================
+       ADMIN PROFILE PREVIEW
+       ===================================== -->
+
   <div
     id="profilePreview"
     class="profile-preview"
@@ -386,9 +901,7 @@
         type="button"
         class="profile-preview-close"
         aria-label="Close profile picture"
-      >
-        &times;
-      </button>
+      >&times;</button>
 
       <img
         src="images/admin-profile.jpg"
@@ -401,6 +914,5 @@
       </div>
     </div>
   </div>
-
 </body>
 </html>
